@@ -248,10 +248,12 @@ def save_replay(game_id: str):
         replay_data = {
             'game_id': game_id,
             'timestamp': datetime.datetime.now().isoformat(),
-            'total_rounds': game.total_rounds,
+            'rounds': game.rounds,
+            'current_round': game.current_round,
             'final_tokens': game.tokens,
             'action_history': game.action_history,
-            'seed': getattr(game, 'seed', None)  # 如果有seed的话
+            'total_moves': game.total_moves,
+            'total_collections': game.total_collections
         }
 
         with open(filepath, 'w', encoding='utf-8') as f:
