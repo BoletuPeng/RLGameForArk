@@ -227,7 +227,12 @@ class GameClient {
 
         const canComboIndices = state.can_combo_indices || [];
 
-        state.hand.forEach((card, index) => {
+        // 创建带有原始索引的卡牌数组，并按卡牌值从小到大排序
+        const sortedHand = state.hand
+            .map((card, index) => ({ card, originalIndex: index }))
+            .sort((a, b) => a.card - b.card);
+
+        sortedHand.forEach(({ card, originalIndex: index }) => {
             const cardElem = document.createElement('div');
             cardElem.className = 'card';
 
