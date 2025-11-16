@@ -76,7 +76,8 @@ def train_ppo(
     n_epochs=10,
     gamma=0.99,
     save_path="models/ppo_resource_game",
-    network_arch="medium"
+    network_arch="medium",
+    enable_eval=True
 ):
     """使用PPO训练智能体
 
@@ -137,8 +138,8 @@ def train_ppo(
     print(f"创建 {n_envs} 个并行环境...")
     env = SubprocVecEnv([make_env(i) for i in range(n_envs)])
 
-    # 创建评估环境
-    eval_env = DummyVecEnv([make_env(n_envs)])
+    # 创建评估环境（仅在启用评估时）
+    eval_env = DummyVecEnv([make_env(n_envs)]) if enable_eval else None
 
     # 创建模型
     print("=" * 60)
@@ -162,20 +163,34 @@ def train_ppo(
 
     # 创建回调
     callback = InvalidActionMaskingCallback()
-    eval_callback = EvalCallback(
-        eval_env,
-        best_model_save_path=save_path,
-        log_path='./logs/eval',
-        eval_freq=10000,
-        deterministic=True,
-        render=False
-    )
+    callbacks = [callback]
+
+    # 如果启用评估，添加评估回调
+    if enable_eval:
+        # 计算合理的评估频率：每收集约 500k 步评估一次
+        # 这样可以避免评估过于频繁导致训练停滞
+        eval_freq = max(100000, n_steps * n_envs * 2)  # 至少每2个rollout评估一次，但不少于100k步
+
+        eval_callback = EvalCallback(
+            eval_env,
+            best_model_save_path=save_path,
+            log_path='./logs/eval',
+            eval_freq=eval_freq,
+            n_eval_episodes=5,  # 减少评估episode数量以加快速度
+            deterministic=True,
+            render=False
+        )
+        callbacks.append(eval_callback)
+
+        print(f"评估配置: 每 {eval_freq:,} 步评估一次 (5个episodes)")
+    else:
+        print("评估已禁用 - 训练将更快完成")
 
     # 训练
     print(f"开始训练 {total_timesteps} 步...")
     model.learn(
         total_timesteps=total_timesteps,
-        callback=[callback, eval_callback],
+        callback=callbacks,
         progress_bar=True
     )
 
@@ -186,7 +201,8 @@ def train_ppo(
     print(f"模型已保存到: {final_model_path}")
 
     env.close()
-    eval_env.close()
+    if eval_env is not None:
+        eval_env.close()
 
     return model
 
@@ -241,6 +257,8 @@ if __name__ == "__main__":
     parser.add_argument('--network', type=str, default='medium',
                         choices=['small', 'medium', 'large', 'xlarge'],
                         help='网络架构规模：small (~7.4K), medium (~17K), large (~54K), xlarge (~86K)')
+    parser.add_argument('--no-eval', action='store_true',
+                        help='禁用训练期间的评估（可以显著加快训练速度）')
     parser.add_argument('--model-path', type=str, default='models/ppo_resource_game/final_model',
                         help='模型路径（用于评估）')
     parser.add_argument('--episodes', type=int, default=10, help='评估轮数')
@@ -253,12 +271,14 @@ if __name__ == "__main__":
         print(f"  训练步数: {args.timesteps:,}")
         print(f"  并行环境: {args.n_envs}")
         print(f"  网络架构: {args.network}")
+        print(f"  启用评估: {not args.no_eval}")
         print("=" * 60 + "\n")
 
         train_ppo(
             total_timesteps=args.timesteps,
             n_envs=args.n_envs,
-            network_arch=args.network
+            network_arch=args.network,
+            enable_eval=not args.no_eval
         )
     else:
         evaluate_model(args.model_path, num_episodes=args.episodes)
