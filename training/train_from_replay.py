@@ -51,68 +51,45 @@ def replay_to_training_data(replays):
     """
     将replay转换为训练数据
 
-    由于我们没有保存observation，这里我们通过重放游戏来重建observation
+    新格式直接包含完整的transitions数据，不需要重建游戏状态
     """
     observations = []
     actions = []
+    valid_actions_list = []  # 可选：用于掩码训练
 
     for replay_idx, replay in enumerate(replays):
         print(f"处理replay {replay_idx + 1}/{len(replays)}...")
 
-        # 创建游戏环境，使用相同的seed（如果有）
-        seed = replay.get('seed', None)
-        total_rounds = replay.get('total_rounds', 10)
-        env = ResourceGameEnv(rounds=total_rounds, seed=seed)
+        # 检查是否为新格式（包含transitions）
+        transitions = replay.get('transitions', None)
 
-        obs, info = env.reset(seed=seed)
-        action_history = replay.get('action_history', [])
+        if transitions is None:
+            # 旧格式，不支持（建议用户重新生成replay）
+            print(f"  警告：replay {replay_idx + 1} 使用旧格式，不包含完整的observation数据，跳过")
+            continue
 
-        for action_data in action_history:
-            action_type = action_data.get('type')
+        # 新格式：直接从transitions中提取数据
+        for transition in transitions:
+            obs = np.array(transition['observation'], dtype=np.float32)
+            action = transition['action']
+            valid_actions = np.array(transition['valid_actions'], dtype=np.float32)
 
-            if action_type == 'move':
-                # 找到对应的手牌索引
-                card_value = action_data.get('card_value')
-                # 在当前手牌中找到这张牌
-                card_index = None
-                for i, val in enumerate(env.game.hand):
-                    if val == card_value:
-                        card_index = i
-                        break
+            observations.append(obs)
+            actions.append(action)
+            valid_actions_list.append(valid_actions)
 
-                if card_index is not None:
-                    action = card_index  # 移动动作 0-4
-                    observations.append(obs.copy())
-                    actions.append(action)
+        print(f"  从replay {replay_idx + 1} 提取了 {len(transitions)} 个样本")
 
-                    # 执行动作
-                    obs, reward, terminated, truncated, info = env.step(action)
-                    if terminated or truncated:
-                        break
+    print(f"\n总共生成了 {len(observations)} 个训练样本")
 
-            elif action_type == 'collect':
-                # 找到对应的手牌索引
-                card_value = action_data.get('card_value')
-                card_index = None
-                for i, val in enumerate(env.game.hand):
-                    if val == card_value:
-                        card_index = i
-                        break
+    if len(observations) == 0:
+        return np.array([]), np.array([]), np.array([])
 
-                if card_index is not None:
-                    action = 5 + card_index  # 收集动作 5-9
-                    observations.append(obs.copy())
-                    actions.append(action)
-
-                    # 执行动作
-                    obs, reward, terminated, truncated, info = env.step(action)
-                    if terminated or truncated:
-                        break
-
-        env.close()
-
-    print(f"生成了 {len(observations)} 个训练样本")
-    return np.array(observations), np.array(actions)
+    return (
+        np.array(observations, dtype=np.float32),
+        np.array(actions, dtype=np.int64),
+        np.array(valid_actions_list, dtype=np.float32)
+    )
 
 
 def train_with_behavior_cloning(
@@ -146,7 +123,7 @@ def train_with_behavior_cloning(
 
     # 转换为训练数据
     print("\n转换replay为训练数据...")
-    observations, actions = replay_to_training_data(replays)
+    observations, actions, valid_actions_list = replay_to_training_data(replays)
 
     if len(observations) == 0:
         print("没有生成任何训练样本，退出训练")

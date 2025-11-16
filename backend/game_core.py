@@ -55,6 +55,7 @@ class ResourceGame:
 
     def __init__(self, rounds: int = 10, seed: Optional[int] = None):
         self.rounds = rounds
+        self.initial_seed = seed      # 保存初始seed，用于replay
         # 地图：10 格环形资源点
         self.map = ['冰', '铁', '火', '冰', '铁', '火', '冰', '铁', '火', '火']
         self.map_ids = [RESOURCE_TYPE_TO_ID[r] for r in self.map]
@@ -78,7 +79,8 @@ class ResourceGame:
         # 统计信息
         self.total_moves = 0
         self.total_collections = 0
-        self.action_history = []
+        self.action_history = []      # 旧的action历史（保持兼容性）
+        self.transitions = []         # 新的完整transition记录（用于强化学习）
 
     def init_customers(self):
         """初始化三名顾客：1 高价值 + 2 普通"""
@@ -431,6 +433,7 @@ class ResourceGame:
     def reset(self, seed: Optional[int] = None):
         """重置游戏"""
         if seed is not None:
+            self.initial_seed = seed
             self.rng = np.random.RandomState(seed)
 
         self.position = 0
@@ -444,6 +447,7 @@ class ResourceGame:
         self.total_moves = 0
         self.total_collections = 0
         self.action_history = []
+        self.transitions = []         # 重置transitions
 
         self.init_customers()
         self.start_round()
