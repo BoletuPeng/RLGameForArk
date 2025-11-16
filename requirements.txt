@@ -1,0 +1,18 @@
+# 核心依赖
+numpy>=1.21.0
+gymnasium>=0.28.0
+
+# Web后端
+flask>=2.3.0
+flask-cors>=4.0.0
+flask-socketio>=5.3.0
+
+# 强化学习训练（可选）
+stable-baselines3>=2.0.0
+tensorboard>=2.13.0
+
+# 并行处理
+cloudpickle>=2.2.0
+
+# 其他工具
+python-socketio>=5.9.0
