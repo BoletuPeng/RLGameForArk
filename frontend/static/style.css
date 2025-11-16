@@ -119,7 +119,7 @@ body {
 /* 游戏区域 */
 .game-area {
     display: grid;
-    grid-template-columns: 1fr 2fr 1fr;
+    grid-template-columns: 1fr 1fr 2fr 1fr;
     gap: 20px;
 }
 
@@ -207,9 +207,21 @@ body {
 }
 
 .map-tile.current {
-    border: 2px solid #667eea;
-    box-shadow: 0 0 12px rgba(102, 126, 234, 0.5);
-    transform: scale(1.1);
+    border: 4px solid #667eea;
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.8), 0 0 40px rgba(102, 126, 234, 0.4);
+    transform: scale(1.15);
+    animation: currentPulse 2s ease-in-out infinite;
+    position: relative;
+    z-index: 10;
+}
+
+@keyframes currentPulse {
+    0%, 100% {
+        box-shadow: 0 0 20px rgba(102, 126, 234, 0.8), 0 0 40px rgba(102, 126, 234, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 30px rgba(102, 126, 234, 1), 0 0 60px rgba(102, 126, 234, 0.6);
+    }
 }
 
 /* 顾客 */
