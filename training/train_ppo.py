@@ -64,12 +64,63 @@ def train_ppo(
     batch_size=64,
     n_epochs=10,
     gamma=0.99,
-    save_path="models/ppo_resource_game"
+    save_path="models/ppo_resource_game",
+    network_arch="medium"
 ):
-    """使用PPO训练智能体"""
+    """使用PPO训练智能体
+
+    Args:
+        network_arch: 网络架构规模
+            - "small": [64, 64] (~7.4K参数) - 默认小网络
+            - "medium": [128, 128] (~17K参数) - 中等网络，推荐
+            - "large": [256, 256] (~54K参数) - 大网络，更强表达能力
+            - "xlarge": [256, 256, 128] (~86K参数) - 超大网络，3层
+    """
     if not HAS_SB3:
         print("错误：需要安装 stable-baselines3")
         return
+
+    # 定义网络架构
+    network_configs = {
+        "small": [64, 64],
+        "medium": [128, 128],
+        "large": [256, 256],
+        "xlarge": [256, 256, 128]
+    }
+
+    if network_arch not in network_configs:
+        print(f"警告：未知的网络架构 '{network_arch}'，使用 'medium'")
+        network_arch = "medium"
+
+    net_arch = network_configs[network_arch]
+
+    # 配置策略网络
+    policy_kwargs = dict(
+        net_arch=dict(pi=net_arch, vf=net_arch)
+    )
+
+    # 估算参数量
+    def estimate_params(arch):
+        """估算网络参数量"""
+        input_dim = 38  # 观测空间维度
+        actor_output = 10  # 动作空间维度
+        critic_output = 1  # 价值输出
+
+        # 共享层参数
+        params = 0
+        prev_dim = input_dim
+        for hidden_dim in arch:
+            params += prev_dim * hidden_dim + hidden_dim  # 权重 + 偏置
+            prev_dim = hidden_dim
+
+        # Actor和Critic各自的输出层
+        params += prev_dim * actor_output + actor_output
+        params += prev_dim * critic_output + critic_output
+
+        # 因为是独立的pi和vf网络，参数量翻倍
+        return params * 2
+
+    estimated_params = estimate_params(net_arch)
 
     # 创建并行环境
     print(f"创建 {n_envs} 个并行环境...")
@@ -79,7 +130,11 @@ def train_ppo(
     eval_env = DummyVecEnv([make_env(n_envs)])
 
     # 创建模型
-    print("创建PPO模型...")
+    print("=" * 60)
+    print(f"创建PPO模型 - 网络架构: {network_arch}")
+    print(f"  网络结构: {net_arch}")
+    print(f"  估算参数量: ~{estimated_params:,} 个")
+    print("=" * 60)
     model = PPO(
         "MlpPolicy",
         env,
@@ -88,6 +143,7 @@ def train_ppo(
         batch_size=batch_size,
         n_epochs=n_epochs,
         gamma=gamma,
+        policy_kwargs=policy_kwargs,
         verbose=1,
         tensorboard_log="./logs/ppo_resource_game"
     )
@@ -170,6 +226,9 @@ if __name__ == "__main__":
                         help='运行模式：train 或 eval')
     parser.add_argument('--timesteps', type=int, default=100000, help='训练步数')
     parser.add_argument('--n-envs', type=int, default=8, help='并行环境数量')
+    parser.add_argument('--network', type=str, default='medium',
+                        choices=['small', 'medium', 'large', 'xlarge'],
+                        help='网络架构规模：small (~7.4K), medium (~17K), large (~54K), xlarge (~86K)')
     parser.add_argument('--model-path', type=str, default='models/ppo_resource_game/final_model',
                         help='模型路径（用于评估）')
     parser.add_argument('--episodes', type=int, default=10, help='评估轮数')
@@ -177,9 +236,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.mode == 'train':
+        print("\n" + "=" * 60)
+        print("PPO 训练配置:")
+        print(f"  训练步数: {args.timesteps:,}")
+        print(f"  并行环境: {args.n_envs}")
+        print(f"  网络架构: {args.network}")
+        print("=" * 60 + "\n")
+
         train_ppo(
             total_timesteps=args.timesteps,
-            n_envs=args.n_envs
+            n_envs=args.n_envs,
+            network_arch=args.network
         )
     else:
         evaluate_model(args.model_path, num_episodes=args.episodes)
