@@ -188,7 +188,21 @@ def perform_action(game_id: str):
     if card_index is None or card_index < 0 or card_index >= len(game.hand):
         return jsonify({'error': 'Invalid card index'}), 400
 
+    # ==================== 记录transition（用于replay） ====================
+    # 1. 记录执行动作前的状态
+    observation = game.get_observation()
+    valid_actions = game.get_valid_actions()
+    old_tokens = game.tokens
+    card_value = game.hand[card_index]
+
+    # 2. 计算动作索引（0-9）
+    if action_type == 'move':
+        action_index = card_index  # 0-4
+    else:  # 'collect'
+        action_index = 5 + card_index  # 5-9
+
     result = {'success': False}
+    transition_info = {}
 
     if action_type == 'move':
         success, msg = game.move(card_index)
@@ -197,18 +211,46 @@ def perform_action(game_id: str):
             'message': msg,
             'type': 'move'
         }
+        transition_info['message'] = msg
     elif action_type == 'collect':
-        success, msg, tokens, _ = game.collect(card_index)
+        success, msg, tokens, customer_gains = game.collect(card_index)
         result = {
             'success': success,
             'message': msg,
             'type': 'collect',
             'tokens_earned': tokens if success else 0
         }
+        transition_info['message'] = msg
+        transition_info['tokens_earned'] = tokens if success else 0
+        transition_info['customer_gains'] = customer_gains
+
+    # 3. 计算奖励（简化版本：主要基于tokens变化）
+    reward = float(game.tokens - old_tokens)
 
     # 执行动作后检查是否需要开始新回合
     if game.is_round_over() and not game.is_game_over():
         game.start_round()
+
+    # 4. 记录执行动作后的状态
+    next_observation = game.get_observation()
+    done = game.is_game_over()
+
+    # 5. 保存完整的transition
+    if success:  # 只记录成功的动作
+        transition = {
+            'step': len(game.transitions),
+            'observation': observation.tolist(),
+            'valid_actions': valid_actions.tolist(),
+            'action': action_index,
+            'action_type': action_type,
+            'card_index': card_index,
+            'card_value': card_value,
+            'reward': reward,
+            'next_observation': next_observation.tolist(),
+            'done': done,
+            'info': transition_info
+        }
+        game.transitions.append(transition)
 
     # 返回结果和新状态
     return jsonify({
@@ -269,6 +311,12 @@ def save_replay(game_id: str):
     """
     保存对局记录
 
+    新格式包含完整的transitions数据，每个transition包含：
+    - observation: 38维观测向量
+    - valid_actions: 10维动作掩码
+    - action: 选择的动作索引（0-9）
+    - reward, next_observation, done等
+
     请求格式：
     {
         "name": "replay_name" (可选，默认使用时间戳)
@@ -304,17 +352,20 @@ def save_replay(game_id: str):
 
         filepath = os.path.join(replay_dir, filename)
 
-        # 保存对局记录
+        # 保存对局记录（新格式）
         import json
         replay_data = {
             'game_id': game_id,
             'timestamp': datetime.datetime.now().isoformat(),
+            'seed': game.initial_seed,  # 保存初始seed，用于重现游戏
             'rounds': game.rounds,
             'current_round': game.current_round,
             'final_tokens': game.tokens,
-            'action_history': game.action_history,
+            'transitions': game.transitions,  # 完整的transition数据
             'total_moves': game.total_moves,
-            'total_collections': game.total_collections
+            'total_collections': game.total_collections,
+            # 保留旧的action_history以保持向后兼容性（可选）
+            'action_history': game.action_history
         }
 
         with open(filepath, 'w', encoding='utf-8') as f:
@@ -324,8 +375,9 @@ def save_replay(game_id: str):
             'message': 'Replay saved successfully',
             'filename': filename,
             'filepath': filepath,
-            'actions_count': len(game.action_history),
-            'final_tokens': game.tokens
+            'transitions_count': len(game.transitions),
+            'final_tokens': game.tokens,
+            'seed': game.initial_seed
         })
     except Exception as e:
         import traceback
