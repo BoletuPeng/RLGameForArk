@@ -390,15 +390,43 @@ class GameClient {
         // 渲染建议动作
         const suggestionElem = document.getElementById('ai-suggestion');
         const actionInfo = pred.action_info;
+        const probabilities = pred.probabilities;
+        const selectedAction = pred.action;
+
+        // 获取选中动作的概率（置信度）
+        const confidence = probabilities[selectedAction];
+        const confidencePercent = (confidence * 100).toFixed(1);
+
+        // 找出概率最高的前3个动作进行对比
+        const actionNames = [
+            'M0', 'M1', 'M2', 'M3', 'M4',
+            'C0', 'C1', 'C2', 'C3', 'C4'
+        ];
+        const sortedActions = probabilities
+            .map((prob, idx) => ({ action: idx, prob: prob, name: actionNames[idx] }))
+            .filter(item => pred.valid_actions[item.action] > 0)  // 只考虑有效动作
+            .sort((a, b) => b.prob - a.prob);
+
+        // 构建基于AI预测的建议文本
         let suggestionText = '';
 
         if (actionInfo.type === 'move') {
-            suggestionText = `建议移动：使用序号 ${actionInfo.card_index} 的牌（${actionInfo.card_value} 点）`;
+            suggestionText = `AI建议移动：使用序号 ${actionInfo.card_index} 的牌（${actionInfo.card_value} 点）`;
         } else {
-            suggestionText = `建议收集：使用序号 ${actionInfo.card_index} 的牌（${actionInfo.card_value} 点）`;
+            suggestionText = `AI建议收集：使用序号 ${actionInfo.card_index} 的牌（${actionInfo.card_value} 点）`;
             if (actionInfo.is_combo) {
                 suggestionText += ' [连击]';
             }
+        }
+
+        // 添加置信度信息
+        suggestionText += ` | 置信度: ${confidencePercent}%`;
+
+        // 如果有次优选择，显示对比信息
+        if (sortedActions.length > 1) {
+            const secondBest = sortedActions[1];
+            const secondProb = (secondBest.prob * 100).toFixed(1);
+            suggestionText += ` | 次选: ${secondBest.name} (${secondProb}%)`;
         }
 
         suggestionElem.textContent = suggestionText;
