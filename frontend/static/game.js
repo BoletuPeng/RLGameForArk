@@ -435,11 +435,6 @@ class GameClient {
         const probsContainer = document.getElementById('action-probs');
         probsContainer.innerHTML = '';
 
-        const actionNames = [
-            'M0', 'M1', 'M2', 'M3', 'M4',
-            'C0', 'C1', 'C2', 'C3', 'C4'
-        ];
-
         pred.probabilities.forEach((prob, index) => {
             const probBar = document.createElement('div');
             probBar.className = 'prob-bar';
