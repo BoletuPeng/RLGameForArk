@@ -5,6 +5,34 @@
 import sys
 import os
 
+# 优化多核CPU性能：设置线程数
+# 这些环境变量控制底层计算库（OpenBLAS/MKL/OpenMP）的线程数
+# 需要在导入 numpy/torch 之前设置
+def setup_cpu_threads(num_threads=None):
+    """设置CPU线程数以优化性能
+
+    Args:
+        num_threads: 线程数，如果为None则自动设置为CPU核心数的80%
+    """
+    if num_threads is None:
+        import multiprocessing
+        num_cores = multiprocessing.cpu_count()
+        # 使用80%的核心数，为系统和其他进程留一些余量
+        num_threads = max(1, int(num_cores * 0.8))
+
+    num_threads = str(num_threads)
+    os.environ['OMP_NUM_THREADS'] = num_threads
+    os.environ['MKL_NUM_THREADS'] = num_threads
+    os.environ['OPENBLAS_NUM_THREADS'] = num_threads
+    os.environ['NUMEXPR_NUM_THREADS'] = num_threads
+
+    print(f"CPU优化: 设置线程数为 {num_threads}")
+
+    return int(num_threads)
+
+# 在导入其他库之前设置线程数
+setup_cpu_threads()
+
 # 添加backend路径
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
