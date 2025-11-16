@@ -6,6 +6,7 @@ class GameClient {
         this.selectedCard = null;
         this.aiEnabled = false;
         this.aiPrediction = null;
+        this.previousRound = 0;  // 记录上一个回合号，用于检测回合切换
 
         this.init();
     }
@@ -53,6 +54,7 @@ class GameClient {
             const data = await response.json();
             this.gameId = data.game_id;
             this.gameState = data.state;
+            this.previousRound = data.state.current_round;  // 初始化回合号
 
             this.addLog('新游戏开始！', 'info');
             this.render();
@@ -88,8 +90,20 @@ class GameClient {
             const data = await response.json();
 
             if (data.result.success) {
+                // 检测回合是否切换
+                const oldRound = this.previousRound;
+                const newRound = data.state.current_round;
+
                 this.gameState = data.state;
                 this.addLog(data.result.message, 'success');
+
+                // 如果回合切换了，显示提示
+                if (oldRound > 0 && newRound > oldRound) {
+                    this.addLog(`📢 回合 ${oldRound} 结束，回合 ${newRound} 开始！`, 'info');
+                }
+
+                // 更新回合号
+                this.previousRound = newRound;
 
                 // 如果获得代币，显示特殊消息
                 if (data.result.tokens_earned > 0) {
@@ -252,9 +266,7 @@ class GameClient {
 
         // 更新提示
         const hint = document.getElementById('hand-hint');
-        if (state.hand.length === 0) {
-            hint.textContent = '本回合已结束，点击按钮开始下一回合';
-        } else if (canComboIndices.length > 0) {
+        if (canComboIndices.length > 0) {
             hint.textContent = `可以使用 ${canComboIndices.map(i => state.hand[i]).join(', ')} 点牌进行连击！`;
         } else if (state.collectable) {
             hint.textContent = '可以进行收集或继续移动';
