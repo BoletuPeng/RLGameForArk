@@ -30,6 +30,11 @@ class GameClient {
             this.newGame();
         });
 
+        // 保存对局记录按钮
+        document.getElementById('save-replay-btn').addEventListener('click', () => {
+            this.saveReplay();
+        });
+
         // AI 切换按钮
         document.getElementById('toggle-ai-btn').addEventListener('click', () => {
             this.toggleAI();
@@ -402,6 +407,42 @@ class GameClient {
         panel.style.display = 'block';
 
         this.addLog(`游戏结束！最终获得 ${this.gameState.tokens} 代币`, 'info');
+    }
+
+    async saveReplay() {
+        if (!this.gameId) {
+            this.addLog('没有可保存的游戏记录', 'error');
+            return;
+        }
+
+        // 可选：提示用户输入记录名称
+        const replayName = prompt('请输入对局记录名称（可选）：', '');
+
+        try {
+            const response = await fetch(`${this.apiUrl}/api/game/${this.gameId}/save_replay`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: replayName || undefined
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                this.addLog(`对局记录已保存：${data.filename}`, 'success');
+                this.addLog(`动作数量：${data.actions_count}，最终代币：${data.final_tokens}`, 'info');
+                alert(`对局记录已成功保存！\n文件名：${data.filename}\n动作数量：${data.actions_count}`);
+            } else {
+                this.addLog(`保存失败：${data.error}`, 'error');
+                alert(`保存失败：${data.error}`);
+            }
+        } catch (error) {
+            this.addLog(`保存对局记录时出错：${error.message}`, 'error');
+            alert(`保存失败：${error.message}`);
+        }
     }
 
     addLog(message, type = 'info') {

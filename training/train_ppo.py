@@ -86,10 +86,10 @@ class InvalidActionMaskingCallback(BaseCallback):
             self.last_episode_count = current_count
 
 
-def make_env(rank, seed=0):
+def make_env(rank, seed=0, auxiliary_reward_coef=1.0):
     """创建环境的工厂函数"""
     def _init():
-        env = ResourceGameEnv(rounds=10, seed=seed + rank)
+        env = ResourceGameEnv(rounds=10, seed=seed + rank, auxiliary_reward_coef=auxiliary_reward_coef)
         env = Monitor(env)
         return env
     return _init
@@ -105,7 +105,9 @@ def train_ppo(
     gamma=0.99,
     save_path="models/ppo_resource_game",
     network_arch="medium",
-    enable_eval=True
+    enable_eval=True,
+    auxiliary_reward_coef=1.0,
+    resume_from=None
 ):
     """使用PPO训练智能体
 
@@ -115,6 +117,14 @@ def train_ppo(
             - "medium": [128, 128] (~17K参数) - 中等网络，推荐
             - "large": [256, 256] (~54K参数) - 大网络，更强表达能力
             - "xlarge": [256, 256, 128] (~86K参数) - 超大网络，3层
+        auxiliary_reward_coef: 辅助奖励系数，默认1.0
+            - 1.0: 完整辅助奖励（默认模式）
+            - 0.0: 纯token奖励模式
+            - 0~1之间: 混合模式
+        resume_from: 从指定模型继续训练（模型路径）
+            - None: 从头开始训练
+            - "best": 从最佳模型继续训练 (best_model.zip)
+            - 其他路径: 从指定路径加载模型
     """
     if not HAS_SB3:
         print("错误：需要安装 stable-baselines3")
@@ -164,35 +174,61 @@ def train_ppo(
 
     # 创建并行环境
     print(f"创建 {n_envs} 个并行训练环境...")
-    env = SubprocVecEnv([make_env(i) for i in range(n_envs)])
+    print(f"辅助奖励系数: {auxiliary_reward_coef}")
+    env = SubprocVecEnv([make_env(i, auxiliary_reward_coef=auxiliary_reward_coef) for i in range(n_envs)])
 
     # 创建评估环境（仅在启用评估时）
     # 使用SubprocVecEnv而不是DummyVecEnv，避免Windows上的进程切换问题
     if enable_eval:
         print("创建评估环境（使用SubprocVecEnv避免Windows进程同步问题）...")
-        eval_env = SubprocVecEnv([make_env(n_envs + i) for i in range(2)])  # 仅使用2个并行评估环境
+        eval_env = SubprocVecEnv([make_env(n_envs + i, auxiliary_reward_coef=auxiliary_reward_coef) for i in range(2)])  # 仅使用2个并行评估环境
     else:
         eval_env = None
 
-    # 创建模型
-    print("=" * 60)
-    print(f"创建PPO模型 - 网络架构: {network_arch}")
-    print(f"  网络结构: {net_arch}")
-    print(f"  估算参数量: ~{estimated_params:,} 个")
-    print("=" * 60)
-    model = PPO(
-        "MlpPolicy",
-        env,
-        learning_rate=learning_rate,
-        n_steps=n_steps,
-        batch_size=batch_size,
-        n_epochs=n_epochs,
-        gamma=gamma,
-        policy_kwargs=policy_kwargs,
-        verbose=1,
-        tensorboard_log="./logs/ppo_resource_game",
-        device='cpu'  # 强制使用CPU，MlpPolicy在CPU上更高效
-    )
+    # 创建或加载模型
+    if resume_from is not None:
+        # 从已有模型继续训练
+        if resume_from == "best":
+            model_path = os.path.join(save_path, "best_model.zip")
+        else:
+            model_path = resume_from
+
+        if not os.path.exists(model_path):
+            print(f"警告：指定的模型路径不存在: {model_path}")
+            print("将从头开始训练...")
+            resume_from = None
+        else:
+            print("=" * 60)
+            print(f"从已有模型继续训练: {model_path}")
+            print("=" * 60)
+            model = PPO.load(model_path, env=env, device='cpu')
+            # 更新学习率和其他参数
+            model.learning_rate = learning_rate
+            model.n_steps = n_steps
+            model.batch_size = batch_size
+            model.n_epochs = n_epochs
+            model.gamma = gamma
+
+    if resume_from is None:
+        # 从头开始训练
+        print("=" * 60)
+        print(f"创建PPO模型 - 网络架构: {network_arch}")
+        print(f"  网络结构: {net_arch}")
+        print(f"  估算参数量: ~{estimated_params:,} 个")
+        print("=" * 60)
+        model = PPO(
+            "MlpPolicy",
+            env,
+            learning_rate=learning_rate,
+            n_steps=n_steps,
+            batch_size=batch_size,
+            n_epochs=n_epochs,
+            gamma=gamma,
+            policy_kwargs=policy_kwargs,
+            verbose=1,
+            tensorboard_log="./logs/ppo_resource_game",
+            device='cpu'  # 强制使用CPU，MlpPolicy在CPU上更高效
+        )
 
     # 创建回调
     callback = InvalidActionMaskingCallback()
@@ -294,6 +330,10 @@ if __name__ == "__main__":
                         help='网络架构规模：small (~7.4K), medium (~17K), large (~54K), xlarge (~86K)')
     parser.add_argument('--no-eval', action='store_true',
                         help='禁用训练期间的评估（可以显著加快训练速度）')
+    parser.add_argument('--auxiliary-reward-coef', type=float, default=1.0,
+                        help='辅助奖励系数（默认1.0，设为0则为纯token奖励模式）')
+    parser.add_argument('--resume', type=str, default=None,
+                        help='从指定模型继续训练（使用"best"加载最佳模型，或指定模型路径）')
     parser.add_argument('--model-path', type=str, default='models/ppo_resource_game/final_model',
                         help='模型路径（用于评估）')
     parser.add_argument('--episodes', type=int, default=10, help='评估轮数')
@@ -306,7 +346,10 @@ if __name__ == "__main__":
         print(f"  训练步数: {args.timesteps:,}")
         print(f"  并行环境: {args.n_envs}")
         print(f"  网络架构: {args.network}")
+        print(f"  辅助奖励系数: {args.auxiliary_reward_coef}")
         print(f"  启用评估: {not args.no_eval}")
+        if args.resume:
+            print(f"  续训模型: {args.resume}")
         if not args.no_eval:
             # 计算实际的eval_freq以告知用户
             n_steps = 2048  # 默认值
@@ -319,7 +362,9 @@ if __name__ == "__main__":
             total_timesteps=args.timesteps,
             n_envs=args.n_envs,
             network_arch=args.network,
-            enable_eval=not args.no_eval
+            enable_eval=not args.no_eval,
+            auxiliary_reward_coef=args.auxiliary_reward_coef,
+            resume_from=args.resume
         )
     else:
         evaluate_model(args.model_path, num_episodes=args.episodes)
