@@ -107,10 +107,6 @@ def perform_action(game_id: str):
     if card_index is None or card_index < 0 or card_index >= len(game.hand):
         return jsonify({'error': 'Invalid card index'}), 400
 
-    # 检查是否需要开始新回合
-    if game.is_round_over() and not game.is_game_over():
-        game.start_round()
-
     result = {'success': False}
 
     if action_type == 'move':
@@ -128,6 +124,10 @@ def perform_action(game_id: str):
             'type': 'collect',
             'tokens_earned': tokens if success else 0
         }
+
+    # 执行动作后检查是否需要开始新回合
+    if game.is_round_over() and not game.is_game_over():
+        game.start_round()
 
     # 返回结果和新状态
     return jsonify({
@@ -353,10 +353,6 @@ def handle_perform_action(data):
 
     game = game_sessions[game_id]
 
-    # 检查是否需要开始新回合
-    if game.is_round_over() and not game.is_game_over():
-        game.start_round()
-
     result = {}
     if action_type == 'move':
         success, msg = game.move(card_index)
@@ -364,6 +360,10 @@ def handle_perform_action(data):
     elif action_type == 'collect':
         success, msg, tokens = game.collect(card_index)
         result = {'success': success, 'message': msg, 'type': 'collect', 'tokens_earned': tokens}
+
+    # 执行动作后检查是否需要开始新回合
+    if game.is_round_over() and not game.is_game_over():
+        game.start_round()
 
     # 广播新状态
     emit('action_result', {
