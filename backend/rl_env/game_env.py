@@ -30,15 +30,22 @@ class ResourceGameEnv(gym.Env):
         - 高价值目标点奖励：移动到位置时，该位置资源的总需求量 * 0.0002
         - 无效动作：无惩罚
         - 游戏结束：最终代币数 * 0.1 的额外奖励
+
+    辅助奖励系数（auxiliary_reward_coef）：
+        - 默认值为1.0，表示使用全部辅助奖励
+        - 设置为0.0时，仅使用token奖励（纯粹的token奖励模式）
+        - 可以设置为0到1之间的任意值来调整辅助奖励的权重
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, rounds: int = 10, seed: Optional[int] = None, render_mode: Optional[str] = None):
+    def __init__(self, rounds: int = 10, seed: Optional[int] = None, render_mode: Optional[str] = None,
+                 auxiliary_reward_coef: float = 1.0):
         super().__init__()
 
         self.rounds = rounds
         self.render_mode = render_mode
+        self.auxiliary_reward_coef = auxiliary_reward_coef
         self.game = ResourceGame(rounds=rounds, seed=seed)
 
         # 定义观测空间和动作空间
@@ -110,9 +117,10 @@ class ResourceGameEnv(gym.Env):
                 info['message'] = msg
 
                 # 高价值目标点奖励：移动到的位置对应资源的总需求量 * 0.0002
+                # 应用辅助奖励系数
                 resource_type = self.game.tile_type()
                 total_need = self._calculate_resource_need(resource_type)
-                target_reward = total_need * 0.0002
+                target_reward = total_need * 0.0002 * self.auxiliary_reward_coef
                 reward += target_reward
                 info['target_reward'] = target_reward
             else:
@@ -124,10 +132,10 @@ class ResourceGameEnv(gym.Env):
             card_index = action - 5
             success, msg, tokens_earned, customer_gains = self.game.collect(card_index)
             if success:
-                # 1. Token奖励：每个token获得对应1的奖励
+                # 1. Token奖励：每个token获得对应1的奖励（不受辅助奖励系数影响）
                 reward = tokens_earned
 
-                # 2. 顾客获得资源的辅助奖励
+                # 2. 顾客获得资源的辅助奖励（应用辅助奖励系数）
                 resource_gain_reward = 0.0
                 for is_vip, gain in customer_gains:
                     if is_vip:
@@ -136,6 +144,8 @@ class ResourceGameEnv(gym.Env):
                     else:
                         # 普通顾客：获得资源量 * 0.01
                         resource_gain_reward += gain * 0.01
+                # 应用辅助奖励系数
+                resource_gain_reward *= self.auxiliary_reward_coef
                 reward += resource_gain_reward
 
                 info['action_type'] = 'collect'
@@ -154,10 +164,12 @@ class ResourceGameEnv(gym.Env):
         terminated = self.game.is_game_over()
 
         if terminated:
-            # 游戏结束，根据最终代币数给予额外奖励
+            # 游戏结束，根据最终代币数给予额外奖励（应用辅助奖励系数）
             # 这里使用代币数作为最终奖励的一部分
-            reward += self.game.tokens * 0.1  # 额外奖励
+            final_reward = self.game.tokens * 0.1 * self.auxiliary_reward_coef
+            reward += final_reward
             info['final_tokens'] = self.game.tokens
+            info['final_reward'] = final_reward
             info['game_over'] = True
 
         truncated = False  # 此环境不使用截断
@@ -213,9 +225,9 @@ class ResourceGameEnv(gym.Env):
             pygame.quit()
 
 
-def make_env(rounds: int = 10, seed: Optional[int] = None):
+def make_env(rounds: int = 10, seed: Optional[int] = None, auxiliary_reward_coef: float = 1.0):
     """创建环境的工厂函数"""
     def _init():
-        env = ResourceGameEnv(rounds=rounds, seed=seed)
+        env = ResourceGameEnv(rounds=rounds, seed=seed, auxiliary_reward_coef=auxiliary_reward_coef)
         return env
     return _init

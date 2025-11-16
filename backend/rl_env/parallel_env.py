@@ -213,7 +213,8 @@ def make_parallel_env(
     n_envs: int = 8,
     rounds: int = 10,
     seed: int = 0,
-    use_multiprocessing: bool = True
+    use_multiprocessing: bool = True,
+    auxiliary_reward_coef: float = 1.0
 ) -> ParallelEnv:
     """
     创建并行环境的便捷函数
@@ -223,12 +224,13 @@ def make_parallel_env(
         rounds: 每个游戏的回合数
         seed: 基础随机种子
         use_multiprocessing: 是否使用多进程（False时用DummyParallelEnv）
+        auxiliary_reward_coef: 辅助奖励系数（默认1.0）
 
     返回：
         ParallelEnv 或 DummyParallelEnv 实例
     """
     env_fns = [
-        lambda i=i: ResourceGameEnv(rounds=rounds, seed=seed + i)
+        lambda i=i: ResourceGameEnv(rounds=rounds, seed=seed + i, auxiliary_reward_coef=auxiliary_reward_coef)
         for i in range(n_envs)
     ]
 

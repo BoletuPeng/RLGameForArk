@@ -183,6 +183,68 @@ def delete_game(game_id: str):
     return jsonify({'error': 'Game not found'}), 404
 
 
+@app.route('/api/game/<game_id>/save_replay', methods=['POST'])
+def save_replay(game_id: str):
+    """
+    保存对局记录
+
+    请求格式：
+    {
+        "name": "replay_name" (可选，默认使用时间戳)
+    }
+    """
+    if game_id not in game_sessions:
+        return jsonify({'error': 'Game not found'}), 404
+
+    game = game_sessions[game_id]
+
+    # 只能保存已结束的游戏
+    if not game.is_game_over():
+        return jsonify({'error': 'Game is not over yet'}), 400
+
+    data = request.json or {}
+    replay_name = data.get('name', None)
+
+    # 创建replay目录
+    replay_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'replays')
+    os.makedirs(replay_dir, exist_ok=True)
+
+    # 生成文件名
+    import datetime
+    if replay_name:
+        # 清理文件名，移除非法字符
+        replay_name = "".join(c for c in replay_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"{replay_name}_{timestamp}.json"
+    else:
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"replay_{timestamp}.json"
+
+    filepath = os.path.join(replay_dir, filename)
+
+    # 保存对局记录
+    import json
+    replay_data = {
+        'game_id': game_id,
+        'timestamp': datetime.datetime.now().isoformat(),
+        'total_rounds': game.total_rounds,
+        'final_tokens': game.tokens,
+        'action_history': game.action_history,
+        'seed': getattr(game, 'seed', None)  # 如果有seed的话
+    }
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(replay_data, f, indent=2, ensure_ascii=False)
+
+    return jsonify({
+        'message': 'Replay saved successfully',
+        'filename': filename,
+        'filepath': filepath,
+        'actions_count': len(game.action_history),
+        'final_tokens': game.tokens
+    })
+
+
 # ==================== AI 相关接口 ====================
 
 @app.route('/api/game/<game_id>/ai/predict', methods=['POST'])
