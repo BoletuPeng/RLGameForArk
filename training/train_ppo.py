@@ -135,11 +135,16 @@ def train_ppo(
     estimated_params = estimate_params(net_arch)
 
     # 创建并行环境
-    print(f"创建 {n_envs} 个并行环境...")
+    print(f"创建 {n_envs} 个并行训练环境...")
     env = SubprocVecEnv([make_env(i) for i in range(n_envs)])
 
     # 创建评估环境（仅在启用评估时）
-    eval_env = DummyVecEnv([make_env(n_envs)]) if enable_eval else None
+    # 使用SubprocVecEnv而不是DummyVecEnv，避免Windows上的进程切换问题
+    if enable_eval:
+        print("创建评估环境（使用SubprocVecEnv避免Windows进程同步问题）...")
+        eval_env = SubprocVecEnv([make_env(n_envs + i) for i in range(2)])  # 仅使用2个并行评估环境
+    else:
+        eval_env = None
 
     # 创建模型
     print("=" * 60)
@@ -167,22 +172,24 @@ def train_ppo(
 
     # 如果启用评估，添加评估回调
     if enable_eval:
-        # 计算合理的评估频率：每收集约 500k 步评估一次
-        # 这样可以避免评估过于频繁导致训练停滞
-        eval_freq = max(100000, n_steps * n_envs * 2)  # 至少每2个rollout评估一次，但不少于100k步
+        # 计算合理的评估频率：大幅提高频率以避免频繁评估导致的性能问题
+        # 在Windows上，频繁的进程切换会导致性能下降和潜在的死锁
+        eval_freq = max(500000, n_steps * n_envs * 20)  # 至少每20个rollout评估一次，或500k步
 
         eval_callback = EvalCallback(
             eval_env,
             best_model_save_path=save_path,
             log_path='./logs/eval',
             eval_freq=eval_freq,
-            n_eval_episodes=5,  # 减少评估episode数量以加快速度
+            n_eval_episodes=10,  # 每个评估环境5个episodes，总共10个
             deterministic=True,
-            render=False
+            render=False,
+            verbose=1  # 显示评估进度
         )
         callbacks.append(eval_callback)
 
-        print(f"评估配置: 每 {eval_freq:,} 步评估一次 (5个episodes)")
+        print(f"评估配置: 每 {eval_freq:,} 步评估一次 (2个并行环境, 每个5个episodes)")
+        print(f"  注意: 使用SubprocVecEnv避免Windows上的进程同步问题")
     else:
         print("评估已禁用 - 训练将更快完成")
 
@@ -272,6 +279,12 @@ if __name__ == "__main__":
         print(f"  并行环境: {args.n_envs}")
         print(f"  网络架构: {args.network}")
         print(f"  启用评估: {not args.no_eval}")
+        if not args.no_eval:
+            # 计算实际的eval_freq以告知用户
+            n_steps = 2048  # 默认值
+            eval_freq = max(500000, n_steps * args.n_envs * 20)
+            print(f"  评估频率: 每 {eval_freq:,} 步")
+            print(f"  提示: 使用 --no-eval 可以完全禁用评估以获得最快速度")
         print("=" * 60 + "\n")
 
         train_ppo(
