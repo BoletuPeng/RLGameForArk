@@ -225,7 +225,7 @@ def evaluate_bc_model(model_path, num_episodes=10):
         return
 
     print(f"加载模型: {model_path}")
-    model = PPO.load(model_path)
+    model = PPO.load(model_path, device='cpu')
 
     env = ResourceGameEnv(rounds=10, seed=42)
 
