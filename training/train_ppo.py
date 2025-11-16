@@ -278,8 +278,14 @@ def train_ppo(
     return model
 
 
-def evaluate_model(model_path, num_episodes=10):
-    """评估训练好的模型"""
+def evaluate_model(model_path, num_episodes=10, n_eval_envs=4):
+    """评估训练好的模型
+
+    Args:
+        model_path: 模型路径
+        num_episodes: 评估的总episode数
+        n_eval_envs: 并行评估环境数（默认4个）
+    """
     if not HAS_SB3:
         print("错误：需要安装 stable-baselines3")
         return
@@ -287,27 +293,35 @@ def evaluate_model(model_path, num_episodes=10):
     print(f"加载模型: {model_path}")
     model = PPO.load(model_path, device='cpu')
 
-    env = ResourceGameEnv(rounds=10, seed=42)
+    # 使用并行环境加速评估
+    print(f"创建 {n_eval_envs} 个并行评估环境...")
+    eval_env = SubprocVecEnv([make_env(i, seed=1000 + i) for i in range(n_eval_envs)])
 
     total_tokens = []
+    total_rewards = []
+    episodes_done = 0
 
-    for episode in range(num_episodes):
-        obs, info = env.reset()
-        done = False
-        episode_reward = 0
+    # 重置所有环境
+    obs = eval_env.reset()
 
-        while not done:
-            action, _states = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, info = env.step(action)
-            episode_reward += reward
-            done = terminated or truncated
+    print(f"开始评估 {num_episodes} 个episodes...")
 
-        final_tokens = info.get('final_tokens', info.get('tokens', 0))
-        total_tokens.append(final_tokens)
+    while episodes_done < num_episodes:
+        # 批量预测
+        actions, _states = model.predict(obs, deterministic=True)
+        obs, rewards, dones, infos = eval_env.step(actions)
 
-        print(f"Episode {episode + 1}: 代币 = {final_tokens}, 奖励 = {episode_reward:.2f}")
+        # 检查是否有episode完成
+        for i, (done, info) in enumerate(zip(dones, infos)):
+            if done and episodes_done < num_episodes:
+                final_tokens = info.get('final_tokens', info.get('tokens', 0))
+                episode_reward = info.get('episode_reward', 0)
+                total_tokens.append(final_tokens)
+                total_rewards.append(episode_reward)
+                episodes_done += 1
+                print(f"Episode {episodes_done}/{num_episodes}: 代币 = {final_tokens}, 奖励 = {episode_reward:.2f}")
 
-    env.close()
+    eval_env.close()
 
     print("\n" + "=" * 60)
     print(f"评估完成！")
@@ -337,6 +351,8 @@ if __name__ == "__main__":
     parser.add_argument('--model-path', type=str, default='models/ppo_resource_game/final_model',
                         help='模型路径（用于评估）')
     parser.add_argument('--episodes', type=int, default=10, help='评估轮数')
+    parser.add_argument('--n-eval-envs', type=int, default=4,
+                        help='评估时的并行环境数（默认4，增加可以加快评估速度）')
 
     args = parser.parse_args()
 
@@ -367,4 +383,9 @@ if __name__ == "__main__":
             resume_from=args.resume
         )
     else:
-        evaluate_model(args.model_path, num_episodes=args.episodes)
+        print("\n" + "=" * 60)
+        print("PPO 评估配置:")
+        print(f"  评估episodes: {args.episodes}")
+        print(f"  并行环境数: {args.n_eval_envs}")
+        print("=" * 60 + "\n")
+        evaluate_model(args.model_path, num_episodes=args.episodes, n_eval_envs=args.n_eval_envs)
