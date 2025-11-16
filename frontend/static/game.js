@@ -7,6 +7,8 @@ class GameClient {
         this.aiEnabled = false;
         this.aiPrediction = null;
         this.previousRound = 0;  // 记录上一个回合号，用于检测回合切换
+        this.selectedModelPath = null;  // 选中的自定义模型路径
+        this.modelsList = [];  // 可用的模型列表
 
         this.init();
     }
@@ -43,6 +45,38 @@ class GameClient {
         // AI 决策按钮
         document.getElementById('ai-action-btn').addEventListener('click', () => {
             this.getAIPrediction();
+        });
+
+        // AI 模式选择器变化
+        document.getElementById('ai-mode-select').addEventListener('change', (e) => {
+            this.onAIModeChange(e.target.value);
+        });
+
+        // 浏览模型按钮
+        document.getElementById('browse-model-btn').addEventListener('click', () => {
+            this.openModelBrowser();
+        });
+
+        // 模型浏览器关闭按钮
+        document.getElementById('close-modal-btn').addEventListener('click', () => {
+            this.closeModelBrowser();
+        });
+
+        // 取消按钮
+        document.getElementById('cancel-model-btn').addEventListener('click', () => {
+            this.closeModelBrowser();
+        });
+
+        // 确认选择按钮
+        document.getElementById('confirm-model-btn').addEventListener('click', () => {
+            this.confirmModelSelection();
+        });
+
+        // 点击模态框外部关闭
+        document.getElementById('model-browser-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'model-browser-modal') {
+                this.closeModelBrowser();
+            }
         });
     }
 
@@ -141,22 +175,36 @@ class GameClient {
         try {
             const aiMode = document.getElementById('ai-mode-select').value;
 
+            const requestBody = {
+                model_type: aiMode
+            };
+
+            // 如果是自定义模型，添加模型路径
+            if (aiMode === 'ppo_custom' && this.selectedModelPath) {
+                requestBody.model_path = this.selectedModelPath;
+            }
+
             const response = await fetch(`/api/game/${this.gameId}/ai/predict`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    model_type: aiMode
-                })
+                body: JSON.stringify(requestBody)
             });
 
             const data = await response.json();
+
+            if (!response.ok) {
+                this.addLog(`AI预测失败: ${data.error}`, 'error');
+                return;
+            }
+
             this.aiPrediction = data;
 
             this.renderAIPanel();
         } catch (error) {
             console.error('获取AI预测失败:', error);
+            this.addLog('获取AI预测失败', 'error');
         }
     }
 
@@ -457,6 +505,157 @@ class GameClient {
         while (logContainer.children.length > 50) {
             logContainer.removeChild(logContainer.lastChild);
         }
+    }
+
+    // 模型浏览器相关方法
+
+    onAIModeChange(mode) {
+        const browseBtn = document.getElementById('browse-model-btn');
+
+        if (mode === 'ppo_custom') {
+            browseBtn.style.display = 'block';
+            // 如果没有选择模型，提示用户
+            if (!this.selectedModelPath) {
+                this.addLog('请点击"浏览模型"选择一个模型文件', 'info');
+            }
+        } else {
+            browseBtn.style.display = 'none';
+        }
+    }
+
+    async openModelBrowser() {
+        const modal = document.getElementById('model-browser-modal');
+        const listContainer = document.getElementById('model-list-container');
+
+        modal.style.display = 'flex';
+        listContainer.innerHTML = '<div class="loading">正在加载模型列表...</div>';
+
+        try {
+            const response = await fetch('/api/models/list');
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || '加载模型列表失败');
+            }
+
+            this.modelsList = data.models || [];
+            this.renderModelList();
+        } catch (error) {
+            console.error('加载模型列表失败:', error);
+            listContainer.innerHTML = `
+                <div class="model-error">
+                    加载模型列表失败: ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    renderModelList() {
+        const listContainer = document.getElementById('model-list-container');
+
+        if (this.modelsList.length === 0) {
+            listContainer.innerHTML = `
+                <div class="no-models">
+                    <div class="no-models-icon">📁</div>
+                    <div>没有找到可用的模型文件</div>
+                    <div style="font-size: 12px; margin-top: 10px; color: #999;">
+                        请将.zip格式的模型文件放在 models/ 目录下
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        listContainer.innerHTML = '';
+
+        this.modelsList.forEach((model, index) => {
+            const modelItem = document.createElement('div');
+            modelItem.className = 'model-item';
+            modelItem.dataset.index = index;
+
+            // 检查是否是当前选中的模型
+            if (this.selectedModelPath === model.relative_path) {
+                modelItem.classList.add('selected');
+            }
+
+            // 格式化文件大小
+            const sizeKB = (model.size / 1024).toFixed(2);
+            const sizeMB = (model.size / 1024 / 1024).toFixed(2);
+            const sizeStr = model.size > 1024 * 1024 ? `${sizeMB} MB` : `${sizeKB} KB`;
+
+            // 格式化修改时间
+            const modifiedDate = new Date(model.modified);
+            const modifiedStr = modifiedDate.toLocaleString('zh-CN');
+
+            modelItem.innerHTML = `
+                <div class="model-item-header">
+                    <div class="model-item-name">${model.name}</div>
+                    <div class="model-item-size">${sizeStr}</div>
+                </div>
+                <div class="model-item-details">
+                    <div class="model-item-path">${model.relative_path}</div>
+                </div>
+                <div class="model-item-modified">修改时间: ${modifiedStr}</div>
+            `;
+
+            modelItem.addEventListener('click', () => {
+                this.selectModel(index);
+            });
+
+            listContainer.appendChild(modelItem);
+        });
+    }
+
+    selectModel(index) {
+        // 移除之前的选中状态
+        document.querySelectorAll('.model-item').forEach(item => {
+            item.classList.remove('selected');
+        });
+
+        // 添加新的选中状态
+        const selectedItem = document.querySelector(`.model-item[data-index="${index}"]`);
+        if (selectedItem) {
+            selectedItem.classList.add('selected');
+        }
+
+        // 更新选中的模型信息
+        const model = this.modelsList[index];
+        const selectedInfo = document.getElementById('selected-model-info');
+        const selectedName = document.getElementById('selected-model-name');
+        const confirmBtn = document.getElementById('confirm-model-btn');
+
+        selectedName.textContent = model.relative_path;
+        selectedInfo.style.display = 'block';
+        confirmBtn.disabled = false;
+
+        // 临时存储选中的模型索引
+        this.tempSelectedModelIndex = index;
+    }
+
+    confirmModelSelection() {
+        if (this.tempSelectedModelIndex !== undefined) {
+            const model = this.modelsList[this.tempSelectedModelIndex];
+            this.selectedModelPath = model.relative_path;
+
+            this.addLog(`已选择模型: ${model.name}`, 'info');
+            this.closeModelBrowser();
+
+            // 自动获取AI预测
+            if (this.aiEnabled && !this.gameState.is_game_over) {
+                setTimeout(() => this.getAIPrediction(), 300);
+            }
+        }
+    }
+
+    closeModelBrowser() {
+        const modal = document.getElementById('model-browser-modal');
+        const selectedInfo = document.getElementById('selected-model-info');
+        const confirmBtn = document.getElementById('confirm-model-btn');
+
+        modal.style.display = 'none';
+        selectedInfo.style.display = 'none';
+        confirmBtn.disabled = true;
+        this.tempSelectedModelIndex = undefined;
     }
 }
 

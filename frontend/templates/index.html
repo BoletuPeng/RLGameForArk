@@ -21,7 +21,9 @@
                         <option value="rule_based">规则策略</option>
                         <option value="ppo_best" selected>PPO模型(最佳)</option>
                         <option value="ppo_final">PPO模型(最终)</option>
+                        <option value="ppo_custom">自定义模型</option>
                     </select>
+                    <button id="browse-model-btn" class="btn btn-secondary" style="display: none;">浏览模型</button>
                     <button id="ai-action-btn" class="btn btn-ai">AI 决策</button>
                 </div>
             </div>
@@ -144,6 +146,28 @@
                         <!-- 动态生成 -->
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 模型浏览器模态框 -->
+    <div id="model-browser-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>选择模型文件</h2>
+                <button class="modal-close" id="close-modal-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="model-list-container" class="model-list">
+                    <div class="loading">正在加载模型列表...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div id="selected-model-info" class="selected-model-info" style="display: none;">
+                    已选择: <span id="selected-model-name"></span>
+                </div>
+                <button id="confirm-model-btn" class="btn btn-primary" disabled>确认选择</button>
+                <button id="cancel-model-btn" class="btn btn-secondary">取消</button>
             </div>
         </div>
     </div>
