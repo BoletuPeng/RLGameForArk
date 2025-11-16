@@ -527,6 +527,10 @@ def ai_predict(game_id: str):
             # 将numpy数组转换为torch张量
             obs_tensor = torch.FloatTensor(obs.reshape(1, -1))
 
+            # 检测模型所在的设备并将输入张量移动到相同设备
+            device = next(ppo_model.policy.parameters()).device
+            obs_tensor = obs_tensor.to(device)
+
             # 获取动作概率分布
             action_probs = ppo_model.policy.get_distribution(obs_tensor).distribution.probs.detach().cpu().numpy()[0]
 
