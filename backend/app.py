@@ -375,6 +375,66 @@ def models_status():
     return jsonify(status)
 
 
+@app.route('/api/models/list', methods=['GET'])
+def list_models():
+    """
+    列出所有可用的模型文件
+
+    返回格式：
+    {
+        "models": [
+            {
+                "name": "best_model.zip",
+                "path": "models/ppo_resource_game/best_model.zip",
+                "relative_path": "models/ppo_resource_game/best_model.zip",
+                "size": 12345,
+                "modified": "2024-01-01T12:00:00"
+            },
+            ...
+        ]
+    }
+    """
+    try:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        models_dir = os.path.join(project_root, 'models')
+
+        if not os.path.exists(models_dir):
+            return jsonify({'models': []})
+
+        model_files = []
+
+        # 递归查找所有.zip文件
+        for root, dirs, files in os.walk(models_dir):
+            for file in files:
+                if file.endswith('.zip'):
+                    full_path = os.path.join(root, file)
+                    relative_path = os.path.relpath(full_path, project_root)
+
+                    # 获取文件信息
+                    stat = os.stat(full_path)
+                    import datetime
+                    modified_time = datetime.datetime.fromtimestamp(stat.st_mtime).isoformat()
+
+                    model_files.append({
+                        'name': file,
+                        'path': full_path,
+                        'relative_path': relative_path,
+                        'directory': os.path.relpath(root, models_dir),
+                        'size': stat.st_size,
+                        'modified': modified_time
+                    })
+
+        # 按修改时间倒序排序
+        model_files.sort(key=lambda x: x['modified'], reverse=True)
+
+        return jsonify({'models': model_files})
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e), 'models': []}), 500
+
+
 @app.route('/api/game/<game_id>/ai/predict', methods=['POST'])
 def ai_predict(game_id: str):
     """
@@ -383,8 +443,9 @@ def ai_predict(game_id: str):
 
     请求格式：
     {
-        "model_type": "random" | "rule_based" | "ppo_best" | "ppo_final" | "custom",
-        "probabilities": [...] (可选，用于自定义模型)
+        "model_type": "random" | "rule_based" | "ppo_best" | "ppo_final" | "ppo_custom" | "custom",
+        "model_path": "..." (可选，用于ppo_custom类型),
+        "probabilities": [...] (可选，用于custom类型)
     }
     """
     if game_id not in game_sessions:
@@ -393,6 +454,7 @@ def ai_predict(game_id: str):
     game = game_sessions[game_id]
     data = request.json or {}
     model_type = data.get('model_type', 'random')
+    model_path = data.get('model_path', None)
 
     obs = game.get_observation()
     valid_actions = game.get_valid_actions()
@@ -411,17 +473,50 @@ def ai_predict(game_id: str):
         # 简单的基于规则的策略
         probs, action = rule_based_policy(game, valid_actions)
 
-    elif model_type in ['ppo_best', 'ppo_final']:
+    elif model_type in ['ppo_best', 'ppo_final', 'ppo_custom']:
         # PPO模型推理
         if not HAS_SB3:
             return jsonify({'error': 'stable-baselines3 not installed'}), 500
 
         # 加载对应的模型
-        model_name = 'best' if model_type == 'ppo_best' else 'final'
-        ppo_model = load_ppo_model(model_name)
+        if model_type == 'ppo_custom':
+            # 使用自定义模型路径
+            if not model_path:
+                return jsonify({'error': 'model_path is required for ppo_custom'}), 400
 
-        if ppo_model is None:
-            return jsonify({'error': f'Failed to load PPO model: {model_name}'}), 500
+            # 验证模型路径安全性（防止路径遍历攻击）
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+            # 如果是相对路径，转换为绝对路径
+            if not os.path.isabs(model_path):
+                abs_model_path = os.path.join(project_root, model_path)
+            else:
+                abs_model_path = model_path
+
+            # 确保路径在项目目录内
+            abs_model_path = os.path.abspath(abs_model_path)
+            if not abs_model_path.startswith(project_root):
+                return jsonify({'error': 'Invalid model path: must be within project directory'}), 400
+
+            if not os.path.exists(abs_model_path):
+                return jsonify({'error': f'Model file not found: {model_path}'}), 404
+
+            try:
+                print(f"正在加载自定义PPO模型: {abs_model_path}")
+                ppo_model = PPO.load(abs_model_path)
+                print(f"自定义PPO模型加载成功")
+            except Exception as e:
+                print(f"加载自定义PPO模型失败: {e}")
+                import traceback
+                traceback.print_exc()
+                return jsonify({'error': f'Failed to load custom model: {str(e)}'}), 500
+        else:
+            # 使用预设模型
+            model_name = 'best' if model_type == 'ppo_best' else 'final'
+            ppo_model = load_ppo_model(model_name)
+
+            if ppo_model is None:
+                return jsonify({'error': f'Failed to load PPO model: {model_name}'}), 500
 
         try:
             # 使用PPO模型进行预测

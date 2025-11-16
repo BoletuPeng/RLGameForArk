@@ -568,3 +568,179 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: #555;
 }
+
+/* 模态框 */
+.modal {
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    width: 90%;
+    max-width: 800px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    padding: 20px 30px;
+    border-bottom: 2px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    margin: 0;
+    color: #667eea;
+    font-size: 22px;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 32px;
+    color: #999;
+    cursor: pointer;
+    padding: 0;
+    width: 40px;
+    height: 40px;
+    line-height: 1;
+    transition: color 0.3s ease;
+}
+
+.modal-close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 20px 30px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.modal-footer {
+    padding: 20px 30px;
+    border-top: 2px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.selected-model-info {
+    flex: 1;
+    color: #666;
+    font-size: 14px;
+}
+
+.selected-model-info span {
+    font-weight: 600;
+    color: #667eea;
+}
+
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+    font-size: 16px;
+}
+
+/* 模型列表 */
+.model-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.model-item {
+    padding: 15px 20px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: white;
+}
+
+.model-item:hover {
+    border-color: #667eea;
+    background: #f7fafc;
+    transform: translateX(5px);
+}
+
+.model-item.selected {
+    border-color: #667eea;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+}
+
+.model-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.model-item-name {
+    font-weight: 600;
+    font-size: 16px;
+    color: #333;
+}
+
+.model-item-size {
+    font-size: 12px;
+    color: #999;
+    background: #f0f0f0;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+.model-item-details {
+    display: flex;
+    gap: 20px;
+    font-size: 13px;
+    color: #666;
+}
+
+.model-item-path {
+    flex: 1;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: #999;
+}
+
+.model-item-modified {
+    font-size: 11px;
+    color: #999;
+}
+
+.model-error {
+    padding: 20px;
+    text-align: center;
+    color: #f56565;
+    background: #fff5f5;
+    border-radius: 8px;
+    border: 2px solid #feb2b2;
+}
+
+.no-models {
+    padding: 40px;
+    text-align: center;
+    color: #999;
+}
+
+.no-models-icon {
+    font-size: 48px;
+    margin-bottom: 10px;
+}
