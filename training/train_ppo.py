@@ -31,6 +31,7 @@ class InvalidActionMaskingCallback(BaseCallback):
         super().__init__(verbose)
         self.episode_rewards = []
         self.episode_tokens = []
+        self.last_episode_count = 0  # 记录上次rollout的场次数
 
     def _on_step(self) -> bool:
         # 检查是否有episode结束
@@ -43,8 +44,18 @@ class InvalidActionMaskingCallback(BaseCallback):
 
     def _on_rollout_end(self) -> None:
         if len(self.episode_tokens) > 0:
+            # 计算本次rollout新增的场次
+            current_count = len(self.episode_tokens)
+            new_episodes = current_count - self.last_episode_count
+
+            # 计算平均代币
             avg_tokens = np.mean(self.episode_tokens[-10:]) if len(self.episode_tokens) >= 10 else np.mean(self.episode_tokens)
-            print(f"  最近平均代币: {avg_tokens:.2f} (共 {len(self.episode_tokens)} 场游戏)")
+
+            # 显示本次rollout的场次和累计场次
+            print(f"  最近平均代币: {avg_tokens:.2f} (本次rollout: {new_episodes} 场, 累计: {current_count} 场)")
+
+            # 更新上次的场次数
+            self.last_episode_count = current_count
 
 
 def make_env(rank, seed=0):
