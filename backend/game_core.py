@@ -89,9 +89,14 @@ class ResourceGame:
         ]
 
     def new_vip_customer(self) -> Customer:
-        """生成一个高价值顾客：两种资源，100 / 40，奖励 4 代币"""
+        """生成一个高价值顾客：两种资源，100/40 或 70/70，奖励 4 代币"""
         types = self.rng.choice(RESOURCE_TYPES, size=2, replace=False).tolist()
-        needs = {types[0]: 100, types[1]: 40}
+        # 随机选择两种模式之一：100+40 或 70+70
+        pattern = self.rng.randint(0, 2)
+        if pattern == 0:
+            needs = {types[0]: 100, types[1]: 40}
+        else:
+            needs = {types[0]: 70, types[1]: 70}
         return Customer(is_vip=True, needs=needs, reward=4)
 
     def new_normal_customer(self) -> Customer:
