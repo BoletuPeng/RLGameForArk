@@ -17,6 +17,7 @@ from game_core import ResourceGame
 # 尝试导入stable_baselines3以支持PPO模型
 try:
     from stable_baselines3 import PPO
+    import torch
     HAS_SB3 = True
 except ImportError:
     HAS_SB3 = False
@@ -522,7 +523,12 @@ def ai_predict(game_id: str):
             # 使用PPO模型进行预测
             # predict返回: (action, _states)
             # 但我们需要获取动作概率分布
-            action_probs = ppo_model.policy.get_distribution(obs.reshape(1, -1)).distribution.probs.detach().cpu().numpy()[0]
+
+            # 将numpy数组转换为torch张量
+            obs_tensor = torch.FloatTensor(obs.reshape(1, -1))
+
+            # 获取动作概率分布
+            action_probs = ppo_model.policy.get_distribution(obs_tensor).distribution.probs.detach().cpu().numpy()[0]
 
             # 应用有效动作掩码
             masked_probs = action_probs * valid_actions
