@@ -14,6 +14,14 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from game_core import ResourceGame
 
+# 尝试导入stable_baselines3以支持PPO模型
+try:
+    from stable_baselines3 import PPO
+    HAS_SB3 = True
+except ImportError:
+    HAS_SB3 = False
+    print("警告: 未安装 stable-baselines3，PPO模型功能将不可用")
+
 app = Flask(__name__,
             template_folder='../frontend/templates',
             static_folder='../frontend/static')
@@ -23,6 +31,58 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # 存储游戏会话
 game_sessions: Dict[str, ResourceGame] = {}
+
+# 全局PPO模型缓存
+ppo_models = {
+    'best': None,
+    'final': None
+}
+
+def load_ppo_model(model_name='best'):
+    """
+    加载PPO模型
+
+    Args:
+        model_name: 'best' 或 'final'
+
+    Returns:
+        加载的PPO模型，如果失败返回None
+    """
+    if not HAS_SB3:
+        print("错误: 未安装 stable-baselines3")
+        return None
+
+    # 检查缓存
+    if ppo_models.get(model_name) is not None:
+        return ppo_models[model_name]
+
+    # 确定模型路径
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    if model_name == 'best':
+        model_path = os.path.join(project_root, 'models', 'ppo_resource_game', 'best_model.zip')
+    elif model_name == 'final':
+        model_path = os.path.join(project_root, 'models', 'ppo_resource_game', 'final_model.zip')
+    else:
+        print(f"未知的模型名称: {model_name}")
+        return None
+
+    # 检查文件是否存在
+    if not os.path.exists(model_path):
+        print(f"模型文件不存在: {model_path}")
+        return None
+
+    try:
+        print(f"正在加载PPO模型: {model_path}")
+        model = PPO.load(model_path)
+        ppo_models[model_name] = model
+        print(f"PPO模型加载成功: {model_name}")
+        return model
+    except Exception as e:
+        print(f"加载PPO模型失败: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 # ==================== 辅助函数 ====================
@@ -277,6 +337,44 @@ def save_replay(game_id: str):
 
 # ==================== AI 相关接口 ====================
 
+@app.route('/api/models/status', methods=['GET'])
+def models_status():
+    """
+    获取模型状态信息
+
+    返回格式：
+    {
+        "has_sb3": true/false,
+        "models": {
+            "ppo_best": {"available": true/false, "path": "..."},
+            "ppo_final": {"available": true/false, "path": "..."}
+        }
+    }
+    """
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    best_model_path = os.path.join(project_root, 'models', 'ppo_resource_game', 'best_model.zip')
+    final_model_path = os.path.join(project_root, 'models', 'ppo_resource_game', 'final_model.zip')
+
+    status = {
+        'has_sb3': HAS_SB3,
+        'models': {
+            'ppo_best': {
+                'available': os.path.exists(best_model_path),
+                'path': best_model_path,
+                'loaded': ppo_models.get('best') is not None
+            },
+            'ppo_final': {
+                'available': os.path.exists(final_model_path),
+                'path': final_model_path,
+                'loaded': ppo_models.get('final') is not None
+            }
+        }
+    }
+
+    return jsonify(status)
+
+
 @app.route('/api/game/<game_id>/ai/predict', methods=['POST'])
 def ai_predict(game_id: str):
     """
@@ -285,7 +383,7 @@ def ai_predict(game_id: str):
 
     请求格式：
     {
-        "model_type": "random" | "rule_based" | "custom",
+        "model_type": "random" | "rule_based" | "ppo_best" | "ppo_final" | "custom",
         "probabilities": [...] (可选，用于自定义模型)
     }
     """
@@ -312,6 +410,39 @@ def ai_predict(game_id: str):
     elif model_type == 'rule_based':
         # 简单的基于规则的策略
         probs, action = rule_based_policy(game, valid_actions)
+
+    elif model_type in ['ppo_best', 'ppo_final']:
+        # PPO模型推理
+        if not HAS_SB3:
+            return jsonify({'error': 'stable-baselines3 not installed'}), 500
+
+        # 加载对应的模型
+        model_name = 'best' if model_type == 'ppo_best' else 'final'
+        ppo_model = load_ppo_model(model_name)
+
+        if ppo_model is None:
+            return jsonify({'error': f'Failed to load PPO model: {model_name}'}), 500
+
+        try:
+            # 使用PPO模型进行预测
+            # predict返回: (action, _states)
+            # 但我们需要获取动作概率分布
+            action_probs = ppo_model.policy.get_distribution(obs.reshape(1, -1)).distribution.probs.detach().cpu().numpy()[0]
+
+            # 应用有效动作掩码
+            masked_probs = action_probs * valid_actions
+            if masked_probs.sum() == 0:
+                return jsonify({'error': 'No valid actions from PPO model'}), 400
+
+            # 重新归一化
+            probs = masked_probs / masked_probs.sum()
+            action = int(np.argmax(probs))
+
+        except Exception as e:
+            print(f"PPO模型推理失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'PPO inference failed: {str(e)}'}), 500
 
     elif model_type == 'custom':
         # 自定义模型提供的概率分布
