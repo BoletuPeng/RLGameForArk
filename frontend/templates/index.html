@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>资源收集游戏 - RL Training</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <header class="header">
+            <h1>🎮 资源收集游戏</h1>
+            <div class="header-controls">
+                <button id="new-game-btn" class="btn btn-primary">新游戏</button>
+                <button id="toggle-ai-btn" class="btn btn-secondary">AI 辅助</button>
+                <div class="ai-mode-selector" style="display: none;">
+                    <label>AI模式：</label>
+                    <select id="ai-mode-select">
+                        <option value="random">随机策略</option>
+                        <option value="rule_based" selected>规则策略</option>
+                    </select>
+                    <button id="ai-action-btn" class="btn btn-ai">AI 决策</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主游戏区域 -->
+        <div class="game-area">
+            <!-- 左侧：游戏状态 -->
+            <div class="left-panel">
+                <!-- 回合信息 -->
+                <div class="info-card">
+                    <h2>游戏状态</h2>
+                    <div class="info-row">
+                        <span class="label">回合：</span>
+                        <span id="round-info" class="value">1 / 10</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">代币：</span>
+                        <span id="tokens-info" class="value token-count">0</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">资源系数：</span>
+                        <span id="coef-info" class="value">3</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">位置：</span>
+                        <span id="position-info" class="value">[0] 冰</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">可收集：</span>
+                        <span id="collectable-info" class="value">否</span>
+                    </div>
+                </div>
+
+                <!-- 地图 -->
+                <div class="info-card map-container">
+                    <h2>环形地图</h2>
+                    <div id="map" class="map-grid"></div>
+                </div>
+
+                <!-- 顾客信息 -->
+                <div class="info-card">
+                    <h2>顾客订单</h2>
+                    <div id="customers-container">
+                        <!-- 动态生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 中间：手牌和操作 -->
+            <div class="center-panel">
+                <!-- 手牌 -->
+                <div class="hand-container">
+                    <h2>手牌</h2>
+                    <div id="hand-cards" class="hand-grid">
+                        <!-- 动态生成 -->
+                    </div>
+                    <div class="hand-hint" id="hand-hint">
+                        选择一张牌进行移动或收集
+                    </div>
+                </div>
+
+                <!-- 操作日志 -->
+                <div class="log-container">
+                    <h2>操作日志</h2>
+                    <div id="action-log" class="log-content">
+                        <div class="log-entry">游戏开始！</div>
+                    </div>
+                </div>
+
+                <!-- 游戏结束面板 -->
+                <div id="game-over-panel" class="game-over-panel" style="display: none;">
+                    <h2>🎉 游戏结束</h2>
+                    <p>最终获得代币：<span id="final-tokens" class="token-count">0</span></p>
+                    <button id="restart-btn" class="btn btn-primary btn-large">再来一局</button>
+                </div>
+            </div>
+
+            <!-- 右侧：AI 决策分析 -->
+            <div class="right-panel">
+                <div class="info-card ai-panel" id="ai-panel" style="display: none;">
+                    <h2>🤖 AI 决策分析</h2>
+
+                    <!-- AI 建议动作 -->
+                    <div class="ai-section">
+                        <h3>建议动作</h3>
+                        <div id="ai-suggestion" class="ai-suggestion">
+                            点击"AI 决策"查看建议
+                        </div>
+                    </div>
+
+                    <!-- 动作概率分布 -->
+                    <div class="ai-section">
+                        <h3>动作概率分布</h3>
+                        <div id="action-probs" class="action-probs">
+                            <!-- 动态生成概率条 -->
+                        </div>
+                    </div>
+
+                    <!-- 观测向量 -->
+                    <div class="ai-section">
+                        <h3>观测向量</h3>
+                        <div id="observation-info" class="observation-info">
+                            <small>38维向量，用于AI输入</small>
+                            <div id="obs-preview" class="obs-preview"></div>
+                        </div>
+                    </div>
+
+                    <!-- 有效动作 -->
+                    <div class="ai-section">
+                        <h3>有效动作</h3>
+                        <div id="valid-actions-info" class="valid-actions-grid">
+                            <!-- 动态生成 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="/static/game.js"></script>
+</body>
+</html>
