@@ -174,6 +174,8 @@ def train_with_behavior_cloning(
 
     # 训练循环
     dataset_size = len(observations)
+    loss_history = []
+
     for epoch in range(epochs):
         # 打乱数据
         indices = np.random.permutation(dataset_size)
@@ -185,11 +187,8 @@ def train_with_behavior_cloning(
             batch_obs = torch.FloatTensor(observations[batch_indices])
             batch_actions = torch.LongTensor(actions[batch_indices])
 
-            # 前向传播
-            # 获取动作logits
-            with torch.no_grad():
-                features = policy.extract_features(batch_obs)
-
+            # 前向传播 - 获取动作logits（保留梯度信息）
+            features = policy.extract_features(batch_obs)
             latent_pi = policy.mlp_extractor.forward_actor(features)
             action_logits = policy.action_net(latent_pi)
 
@@ -205,8 +204,17 @@ def train_with_behavior_cloning(
             num_batches += 1
 
         avg_loss = epoch_loss / num_batches
-        if (epoch + 1) % 10 == 0 or epoch == 0:
+        loss_history.append(avg_loss)
+
+        # 如果epoch数<=10，每个epoch都打印；否则每10个epoch打印一次
+        if epochs <= 10 or (epoch + 1) % 10 == 0 or epoch == 0:
             print(f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}")
+
+    # 训练完成总结
+    print(f"\n训练完成！")
+    print(f"  初始Loss: {loss_history[0]:.4f}")
+    print(f"  最终Loss: {loss_history[-1]:.4f}")
+    print(f"  Loss降低: {loss_history[0] - loss_history[-1]:.4f} ({(loss_history[0] - loss_history[-1])/loss_history[0]*100:.1f}%)")
 
     # 保存模型
     os.makedirs(save_path, exist_ok=True)
