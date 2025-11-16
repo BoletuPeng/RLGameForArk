@@ -53,6 +53,26 @@ def serialize_game_state(game: ResourceGame) -> dict:
     return state
 
 
+# ==================== 全局错误处理 ====================
+
+@app.errorhandler(500)
+def internal_error(error):
+    """处理500错误，返回JSON格式"""
+    return jsonify({
+        'error': 'Internal server error',
+        'message': str(error)
+    }), 500
+
+
+@app.errorhandler(404)
+def not_found(error):
+    """处理404错误，返回JSON格式"""
+    return jsonify({
+        'error': 'Not found',
+        'message': str(error)
+    }), 404
+
+
 # ==================== Web Routes ====================
 
 @app.route('/')
@@ -193,56 +213,64 @@ def save_replay(game_id: str):
         "name": "replay_name" (可选，默认使用时间戳)
     }
     """
-    if game_id not in game_sessions:
-        return jsonify({'error': 'Game not found'}), 404
+    try:
+        if game_id not in game_sessions:
+            return jsonify({'error': 'Game not found'}), 404
 
-    game = game_sessions[game_id]
+        game = game_sessions[game_id]
 
-    # 只能保存已结束的游戏
-    if not game.is_game_over():
-        return jsonify({'error': 'Game is not over yet'}), 400
+        # 只能保存已结束的游戏
+        if not game.is_game_over():
+            return jsonify({'error': 'Game is not over yet'}), 400
 
-    data = request.json or {}
-    replay_name = data.get('name', None)
+        data = request.json or {}
+        replay_name = data.get('name', None)
 
-    # 创建replay目录
-    replay_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'replays')
-    os.makedirs(replay_dir, exist_ok=True)
+        # 创建replay目录
+        replay_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'replays')
+        os.makedirs(replay_dir, exist_ok=True)
 
-    # 生成文件名
-    import datetime
-    if replay_name:
-        # 清理文件名，移除非法字符
-        replay_name = "".join(c for c in replay_name if c.isalnum() or c in (' ', '-', '_')).strip()
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"{replay_name}_{timestamp}.json"
-    else:
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"replay_{timestamp}.json"
+        # 生成文件名
+        import datetime
+        if replay_name:
+            # 清理文件名，移除非法字符
+            replay_name = "".join(c for c in replay_name if c.isalnum() or c in (' ', '-', '_')).strip()
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"{replay_name}_{timestamp}.json"
+        else:
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"replay_{timestamp}.json"
 
-    filepath = os.path.join(replay_dir, filename)
+        filepath = os.path.join(replay_dir, filename)
 
-    # 保存对局记录
-    import json
-    replay_data = {
-        'game_id': game_id,
-        'timestamp': datetime.datetime.now().isoformat(),
-        'total_rounds': game.total_rounds,
-        'final_tokens': game.tokens,
-        'action_history': game.action_history,
-        'seed': getattr(game, 'seed', None)  # 如果有seed的话
-    }
+        # 保存对局记录
+        import json
+        replay_data = {
+            'game_id': game_id,
+            'timestamp': datetime.datetime.now().isoformat(),
+            'total_rounds': game.total_rounds,
+            'final_tokens': game.tokens,
+            'action_history': game.action_history,
+            'seed': getattr(game, 'seed', None)  # 如果有seed的话
+        }
 
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump(replay_data, f, indent=2, ensure_ascii=False)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(replay_data, f, indent=2, ensure_ascii=False)
 
-    return jsonify({
-        'message': 'Replay saved successfully',
-        'filename': filename,
-        'filepath': filepath,
-        'actions_count': len(game.action_history),
-        'final_tokens': game.tokens
-    })
+        return jsonify({
+            'message': 'Replay saved successfully',
+            'filename': filename,
+            'filepath': filepath,
+            'actions_count': len(game.action_history),
+            'final_tokens': game.tokens
+        })
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error saving replay: {error_details}")
+        return jsonify({
+            'error': f'Failed to save replay: {str(e)}'
+        }), 500
 
 
 # ==================== AI 相关接口 ====================
