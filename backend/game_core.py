@@ -186,20 +186,20 @@ class ResourceGame:
 
         return True, msg
 
-    def collect(self, card_index: int) -> Tuple[bool, str, int]:
+    def collect(self, card_index: int) -> Tuple[bool, str, int, List[Tuple[bool, int]]]:
         """
         使用一张牌进行收集
-        返回：(成功, 消息, 获得的代币数)
+        返回：(成功, 消息, 获得的代币数, 每个顾客的(是否VIP, 获得的有效资源量)列表)
         """
         if card_index < 0 or card_index >= len(self.hand):
-            return False, "卡牌索引无效", 0
+            return False, "卡牌索引无效", 0, []
 
         # 检查是否可以收集
         combo_indices = self.can_combo_indices()
         is_combo = card_index in combo_indices
 
         if not is_combo and not self.collectable:
-            return False, "当前不能进行普通收集", 0
+            return False, "当前不能进行普通收集", 0, []
 
         value = self.hand.pop(card_index)
         tile = self.tile_type()
@@ -224,7 +224,7 @@ class ResourceGame:
         self.total_collections += 1
 
         # 分配资源并检查完成情况
-        tokens_earned = self.distribute(produced)
+        tokens_earned, customer_gains = self.distribute(produced)
 
         if tokens_earned > 0:
             msg_parts.append(f"完成订单，获得 {tokens_earned} 代币！")
@@ -238,16 +238,22 @@ class ResourceGame:
             'tokens_earned': tokens_earned
         })
 
-        return True, "；".join(msg_parts), tokens_earned
+        return True, "；".join(msg_parts), tokens_earned, customer_gains
 
-    def distribute(self, produced: Dict[str, int]) -> int:
+    def distribute(self, produced: Dict[str, int]) -> Tuple[int, List[Tuple[bool, int]]]:
         """
         把本次产出的资源分配给所有顾客
-        返回：本次获得的代币数
+        返回：(本次获得的代币数, 每个顾客的(是否VIP, 获得的有效资源量)列表)
         """
         tokens_earned = 0
+        customer_gains = []
 
-        # 先分配
+        # 先记录每个顾客的旧状态
+        old_have = []
+        for cust in self.customers:
+            old_have.append({r: cust.have.get(r, 0) for r in cust.needs})
+
+        # 分配资源
         for res_type, amount in produced.items():
             if amount <= 0:
                 continue
@@ -258,6 +264,15 @@ class ResourceGame:
                     if old >= need:
                         continue
                     cust.have[res_type] = min(need, old + amount)
+
+        # 计算每个顾客实际获得的有效资源量
+        for idx, cust in enumerate(self.customers):
+            gain = 0
+            for res_type in cust.needs:
+                old = old_have[idx].get(res_type, 0)
+                new = cust.have.get(res_type, 0)
+                gain += new - old
+            customer_gains.append((cust.is_vip, gain))
 
         # 再检查完成情况
         for idx, cust in enumerate(list(self.customers)):
@@ -270,7 +285,7 @@ class ResourceGame:
                 else:
                     self.customers[idx] = self.new_normal_customer()
 
-        return tokens_earned
+        return tokens_earned, customer_gains
 
     def start_round(self) -> bool:
         """

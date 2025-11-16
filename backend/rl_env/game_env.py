@@ -23,9 +23,13 @@ class ResourceGameEnv(gym.Env):
         - 5-9: 使用手牌索引0-4进行收集
 
     奖励设计：
-        - 完成顾客订单：+订单代币数（1或4）
-        - 无效动作：-0.1
-        - 游戏结束：根据最终代币数给予奖励
+        - Token获得：每个token对应+1奖励
+        - 顾客获得资源辅助奖励：
+            * 普通顾客：有效资源量 * 0.01
+            * 高价值顾客：有效资源量 * 0.013
+        - 高价值目标点奖励：移动到位置时，该位置资源的总需求量 * 0.0002
+        - 无效动作：无惩罚
+        - 游戏结束：最终代币数 * 0.1 的额外奖励
     """
 
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
@@ -68,6 +72,16 @@ class ResourceGameEnv(gym.Env):
 
         return obs, info
 
+    def _calculate_resource_need(self, resource_type: str) -> int:
+        """计算所有顾客对某个资源的总需求量（需求量 - 已拥有量）"""
+        total_need = 0
+        for cust in self.game.customers:
+            if resource_type in cust.needs:
+                need = cust.needs[resource_type]
+                have = cust.have.get(resource_type, 0)
+                total_need += max(0, need - have)
+        return total_need
+
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         """
         执行一个动作
@@ -94,24 +108,42 @@ class ResourceGameEnv(gym.Env):
             if success:
                 info['action_type'] = 'move'
                 info['message'] = msg
-                # 移动没有直接奖励，但也不惩罚
+
+                # 高价值目标点奖励：移动到的位置对应资源的总需求量 * 0.0002
+                resource_type = self.game.tile_type()
+                total_need = self._calculate_resource_need(resource_type)
+                target_reward = total_need * 0.0002
+                reward += target_reward
+                info['target_reward'] = target_reward
             else:
-                # 无效动作，小惩罚
-                reward = -0.1
+                # 无效动作，不再惩罚
                 info['action_type'] = 'invalid_move'
                 info['message'] = msg
         else:
             # 收集动作
             card_index = action - 5
-            success, msg, tokens_earned = self.game.collect(card_index)
+            success, msg, tokens_earned, customer_gains = self.game.collect(card_index)
             if success:
-                reward = tokens_earned  # 直接用代币作为奖励
+                # 1. Token奖励：每个token获得对应1的奖励
+                reward = tokens_earned
+
+                # 2. 顾客获得资源的辅助奖励
+                resource_gain_reward = 0.0
+                for is_vip, gain in customer_gains:
+                    if is_vip:
+                        # 高价值顾客：获得资源量 * 0.013
+                        resource_gain_reward += gain * 0.013
+                    else:
+                        # 普通顾客：获得资源量 * 0.01
+                        resource_gain_reward += gain * 0.01
+                reward += resource_gain_reward
+
                 info['action_type'] = 'collect'
                 info['message'] = msg
                 info['tokens_earned'] = tokens_earned
+                info['resource_gain_reward'] = resource_gain_reward
             else:
-                # 无效动作，小惩罚
-                reward = -0.1
+                # 无效动作，不再惩罚
                 info['action_type'] = 'invalid_collect'
                 info['message'] = msg
 

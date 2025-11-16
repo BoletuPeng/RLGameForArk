@@ -117,7 +117,7 @@ def perform_action(game_id: str):
             'type': 'move'
         }
     elif action_type == 'collect':
-        success, msg, tokens = game.collect(card_index)
+        success, msg, tokens, _ = game.collect(card_index)
         result = {
             'success': success,
             'message': msg,
@@ -358,7 +358,7 @@ def handle_perform_action(data):
         success, msg = game.move(card_index)
         result = {'success': success, 'message': msg, 'type': 'move'}
     elif action_type == 'collect':
-        success, msg, tokens = game.collect(card_index)
+        success, msg, tokens, _ = game.collect(card_index)
         result = {'success': success, 'message': msg, 'type': 'collect', 'tokens_earned': tokens}
 
     # 执行动作后检查是否需要开始新回合
