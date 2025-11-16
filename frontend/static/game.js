@@ -419,7 +419,7 @@ class GameClient {
         const replayName = prompt('请输入对局记录名称（可选）：', '');
 
         try {
-            const response = await fetch(`${this.apiUrl}/api/game/${this.gameId}/save_replay`, {
+            const response = await fetch(`/api/game/${this.gameId}/save_replay`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
