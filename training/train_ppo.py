@@ -145,7 +145,8 @@ def train_ppo(
         gamma=gamma,
         policy_kwargs=policy_kwargs,
         verbose=1,
-        tensorboard_log="./logs/ppo_resource_game"
+        tensorboard_log="./logs/ppo_resource_game",
+        device='cpu'  # 强制使用CPU，MlpPolicy在CPU上更高效
     )
 
     # 创建回调
