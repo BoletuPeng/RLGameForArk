@@ -279,9 +279,12 @@ MIT License
 ### Q: 如何提高训练速度？
 
 A:
-1. 增加并行环境数量（`--n-envs`）
-2. 使用GPU加速（需要CUDA支持）
-3. 调整PPO参数（减小 `n_steps` 和 `batch_size`）
+1. 增加并行环境数量（`--n-envs`）（但这是不行的，PPO的多线程属于本笨比根本看不懂的东西，cmd里print的自动线程分配都是假的）
+2. 使用GPU加速（需要CUDA支持）   （但这是不行的，这样的游戏在GPU上跑只会更慢捏）
+3. 调整PPO参数（减小 `n_steps` 和 `batch_size`） （这是可以的，但是16分以上的对局几乎无法学习到东西）
+4. numba编译 （已经做了，似乎没什么软用）
+
+0. 用C重写GameCore: 这是可以的，请（鞠躬）
 
 ### Q: 如何调试环境？
 
@@ -291,6 +294,8 @@ A: 使用 `test_env.py` 脚本进行全面测试：
 python training/test_env.py --test all
 ```
 
+（找不到就是没有）
+
 ### Q: 如何在训练时可视化？
 
 A: 使用 TensorBoard：
@@ -299,13 +304,3 @@ A: 使用 TensorBoard：
 tensorboard --logdir ./logs/ppo_resource_game
 ```
 
-### Q: 如何部署到生产环境？
-
-A:
-1. 使用 gunicorn 运行 Flask 应用
-2. 配置 Nginx 作为反向代理
-3. 使用环境变量管理配置
-
-```bash
-gunicorn -w 4 -b 0.0.0.0:5000 backend.app:app
-```
