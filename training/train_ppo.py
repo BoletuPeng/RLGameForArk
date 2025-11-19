@@ -43,6 +43,7 @@ import numpy as np
 try:
     from sb3_contrib import MaskablePPO
     from sb3_contrib.common.wrappers import ActionMasker
+    from sb3_contrib.common.maskable.buffers import MaskableRolloutBuffer
     from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
     from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
     from stable_baselines3.common.monitor import Monitor
@@ -210,6 +211,9 @@ def train_ppo(
             print("=" * 60)
             model = MaskablePPO.load(model_path, env=env, device='cpu')
 
+            # 保存旧的n_steps以检测是否需要重建buffer
+            old_n_steps = model.n_steps
+
             # 更新超参数
             model.learning_rate = learning_rate
             model.n_steps = n_steps
@@ -217,10 +221,25 @@ def train_ppo(
             model.n_epochs = n_epochs
             model.gamma = gamma
 
-            # 重要：重新初始化模型内部状态（包括rollout buffer）
-            # 这样可以确保buffer大小与新的n_steps匹配
-            print(f"重新初始化rollout buffer (n_steps={n_steps}, buffer大小={n_steps * n_envs})...")
-            model._setup_model()
+            # 如果n_steps改变，需要重新创建rollout buffer
+            # 注意：只重建buffer，不重置优化器，这样可以保留训练状态
+            if n_steps != old_n_steps:
+                print(f"检测到n_steps变化: {old_n_steps} -> {n_steps}")
+                print(f"重新创建rollout buffer (大小: {n_steps * n_envs})，保留优化器状态...")
+
+                # 手动创建新的rollout buffer
+                model.rollout_buffer = MaskableRolloutBuffer(
+                    buffer_size=n_steps,
+                    observation_space=model.observation_space,
+                    action_space=model.action_space,
+                    device=model.device,
+                    gamma=gamma,
+                    gae_lambda=model.gae_lambda,
+                    n_envs=n_envs,
+                )
+                print("Rollout buffer已重建，优化器状态已保留！")
+            else:
+                print(f"n_steps未改变({n_steps})，保持原有buffer和优化器状态")
 
     if resume_from is None:
         # 从头开始训练
