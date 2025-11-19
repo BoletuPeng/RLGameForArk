@@ -9,6 +9,7 @@ class GameClient {
         this.previousRound = 0;  // 记录上一个回合号，用于检测回合切换
         this.selectedModelPath = null;  // 选中的自定义模型路径
         this.modelsList = [];  // 可用的模型列表
+        this.endgameMode = false;  // 残局模式标志
 
         this.init();
     }
@@ -35,6 +36,11 @@ class GameClient {
         // 保存对局记录按钮
         document.getElementById('save-replay-btn').addEventListener('click', () => {
             this.saveReplay();
+        });
+
+        // 残局模式按钮
+        document.getElementById('toggle-endgame-btn').addEventListener('click', () => {
+            this.toggleEndgameMode();
         });
 
         // AI 切换按钮
@@ -249,6 +255,20 @@ class GameClient {
             `[${state.position}] ${state.resource_type}`;
         document.getElementById('collectable-info').textContent =
             state.collectable ? '是' : '否';
+
+        // 残局模式下添加点击事件
+        if (this.endgameMode) {
+            const infoCard = document.querySelector('.info-card');
+            const h2 = infoCard.querySelector('h2');
+
+            // 移除之前的事件监听器（如果有）
+            const newH2 = h2.cloneNode(true);
+            h2.parentNode.replaceChild(newH2, h2);
+
+            newH2.addEventListener('click', () => {
+                this.editGameState();
+            });
+        }
     }
 
     renderMap() {
@@ -269,6 +289,15 @@ class GameClient {
                 <div>${resourceIcons[resource]} ${resource}</div>
                 <div style="font-size: 10px; margin-top: 4px;">[${index}]</div>
             `;
+
+            // 残局模式下添加点击事件
+            if (this.endgameMode) {
+                tile.style.cursor = 'pointer';
+                tile.addEventListener('click', () => {
+                    this.moveToPosition(index);
+                });
+            }
+
             mapContainer.appendChild(tile);
         });
     }
@@ -333,6 +362,20 @@ class GameClient {
         } else {
             hint.textContent = '选择一张牌进行移动';
         }
+
+        // 残局模式下添加点击事件
+        if (this.endgameMode) {
+            const handContainer = document.querySelector('.hand-container');
+            const h2 = handContainer.querySelector('h2');
+
+            // 移除之前的事件监听器（如果有）
+            const newH2 = h2.cloneNode(true);
+            h2.parentNode.replaceChild(newH2, h2);
+
+            newH2.addEventListener('click', () => {
+                this.editHand();
+            });
+        }
     }
 
     renderCustomers() {
@@ -380,6 +423,19 @@ class GameClient {
 
             customerElem.appendChild(header);
             customerElem.appendChild(needsContainer);
+
+            // 残局模式下添加点击事件
+            if (this.endgameMode) {
+                customerElem.style.cursor = 'pointer';
+                customerElem.addEventListener('click', (e) => {
+                    // 如果点击的是编辑表单内的元素，不触发编辑
+                    if (e.target.closest('.edit-form')) {
+                        return;
+                    }
+                    this.editCustomer(index);
+                });
+            }
+
             container.appendChild(customerElem);
         });
     }
@@ -469,9 +525,17 @@ class GameClient {
     showGameOver() {
         const panel = document.getElementById('game-over-panel');
         const finalTokens = document.getElementById('final-tokens');
+        const saveReplayBtn = document.getElementById('save-replay-btn');
 
         finalTokens.textContent = this.gameState.tokens;
         panel.style.display = 'block';
+
+        // 残局模式下隐藏保存按钮
+        if (this.endgameMode) {
+            saveReplayBtn.style.display = 'none';
+        } else {
+            saveReplayBtn.style.display = 'block';
+        }
 
         this.addLog(`游戏结束！最终获得 ${this.gameState.tokens} 代币`, 'info');
     }
@@ -675,6 +739,245 @@ class GameClient {
         selectedInfo.style.display = 'none';
         confirmBtn.disabled = true;
         this.tempSelectedModelIndex = undefined;
+    }
+
+    // ===== 残局模式相关方法 =====
+
+    toggleEndgameMode() {
+        this.endgameMode = !this.endgameMode;
+        const btn = document.getElementById('toggle-endgame-btn');
+        const gameArea = document.querySelector('.game-area');
+
+        if (this.endgameMode) {
+            btn.textContent = '退出残局模式';
+            btn.classList.add('active');
+            gameArea.classList.add('endgame-mode');
+            this.addLog('已进入残局模式 - 可以编辑游戏状态', 'info');
+        } else {
+            btn.textContent = '残局模式';
+            btn.classList.remove('active');
+            gameArea.classList.remove('endgame-mode');
+            this.addLog('已退出残局模式', 'info');
+        }
+
+        // 重新渲染以应用残局模式的交互
+        this.render();
+    }
+
+    // 编辑游戏状态
+    editGameState() {
+        const infoCard = document.querySelector('.info-card');
+
+        // 检查是否已经有编辑表单
+        const existingForm = infoCard.querySelector('.edit-form');
+        if (existingForm) {
+            existingForm.remove();
+            return;
+        }
+
+        const form = document.createElement('div');
+        form.className = 'edit-form';
+        form.innerHTML = `
+            <div class="edit-form-row">
+                <label class="edit-form-label">当前回合：</label>
+                <input type="number" class="edit-form-input" id="edit-round"
+                       value="${this.gameState.current_round}" min="1" max="${this.gameState.total_rounds}">
+            </div>
+            <div class="edit-form-row">
+                <label class="edit-form-label">代币：</label>
+                <input type="number" class="edit-form-input" id="edit-tokens"
+                       value="${this.gameState.tokens}" min="0">
+            </div>
+            <div class="edit-form-row">
+                <label class="edit-form-label">资源系数：</label>
+                <input type="number" class="edit-form-input" id="edit-coef"
+                       value="${this.gameState.resource_coef}" min="1">
+            </div>
+            <div class="edit-form-buttons">
+                <button class="btn btn-primary" id="save-state-btn">保存</button>
+                <button class="btn btn-secondary" id="cancel-state-btn">取消</button>
+            </div>
+        `;
+
+        infoCard.appendChild(form);
+
+        document.getElementById('save-state-btn').addEventListener('click', () => {
+            const newRound = parseInt(document.getElementById('edit-round').value);
+            const newTokens = parseInt(document.getElementById('edit-tokens').value);
+            const newCoef = parseInt(document.getElementById('edit-coef').value);
+
+            this.gameState.current_round = newRound;
+            this.gameState.tokens = newTokens;
+            this.gameState.resource_coef = newCoef;
+
+            this.addLog(`已更新游戏状态: 回合=${newRound}, 代币=${newTokens}, 系数=${newCoef}`, 'success');
+            form.remove();
+            this.render();
+
+            // 如果AI已启用,重新获取预测
+            if (this.aiEnabled) {
+                this.getAIPrediction();
+            }
+        });
+
+        document.getElementById('cancel-state-btn').addEventListener('click', () => {
+            form.remove();
+        });
+    }
+
+    // 编辑手牌
+    editHand() {
+        const handContainer = document.querySelector('.hand-container');
+
+        // 检查是否已经有编辑表单
+        const existingForm = handContainer.querySelector('.edit-form');
+        if (existingForm) {
+            existingForm.remove();
+            return;
+        }
+
+        const form = document.createElement('div');
+        form.className = 'edit-form';
+        form.innerHTML = `
+            <div class="edit-form-row">
+                <label class="edit-form-label">1点牌数量：</label>
+                <input type="number" class="edit-form-input" id="edit-card-1"
+                       value="${this.gameState.hand[1] || 0}" min="0">
+            </div>
+            <div class="edit-form-row">
+                <label class="edit-form-label">2点牌数量：</label>
+                <input type="number" class="edit-form-input" id="edit-card-2"
+                       value="${this.gameState.hand[2] || 0}" min="0">
+            </div>
+            <div class="edit-form-row">
+                <label class="edit-form-label">3点牌数量：</label>
+                <input type="number" class="edit-form-input" id="edit-card-3"
+                       value="${this.gameState.hand[3] || 0}" min="0">
+            </div>
+            <div class="edit-form-buttons">
+                <button class="btn btn-primary" id="save-hand-btn">保存</button>
+                <button class="btn btn-secondary" id="cancel-hand-btn">取消</button>
+            </div>
+        `;
+
+        handContainer.appendChild(form);
+
+        document.getElementById('save-hand-btn').addEventListener('click', () => {
+            const count1 = parseInt(document.getElementById('edit-card-1').value);
+            const count2 = parseInt(document.getElementById('edit-card-2').value);
+            const count3 = parseInt(document.getElementById('edit-card-3').value);
+
+            this.gameState.hand = { 1: count1, 2: count2, 3: count3 };
+
+            this.addLog(`已更新手牌: 1点×${count1}, 2点×${count2}, 3点×${count3}`, 'success');
+            form.remove();
+            this.render();
+
+            // 如果AI已启用,重新获取预测
+            if (this.aiEnabled) {
+                this.getAIPrediction();
+            }
+        });
+
+        document.getElementById('cancel-hand-btn').addEventListener('click', () => {
+            form.remove();
+        });
+    }
+
+    // 编辑顾客订单
+    editCustomer(customerIndex) {
+        const customer = this.gameState.customers[customerIndex];
+        const customerElem = document.querySelectorAll('.customer')[customerIndex];
+
+        // 检查是否已经有编辑表单
+        const existingForm = customerElem.querySelector('.edit-form');
+        if (existingForm) {
+            existingForm.remove();
+            return;
+        }
+
+        const resources = ['冰', '铁', '火'];
+        let formHTML = '<div class="edit-form">';
+
+        resources.forEach(resource => {
+            const need = customer.needs[resource] || 0;
+            const have = customer.have[resource] || 0;
+
+            formHTML += `
+                <div class="edit-form-grid" style="margin-bottom: 15px;">
+                    <div class="edit-form-grid-item">
+                        <label class="edit-form-grid-label">${resource} 已满足量：</label>
+                        <input type="number" class="edit-form-input"
+                               id="edit-have-${resource}-${customerIndex}"
+                               value="${have}" min="0">
+                    </div>
+                    <div class="edit-form-grid-item">
+                        <label class="edit-form-grid-label">${resource} 总需求量：</label>
+                        <input type="number" class="edit-form-input"
+                               id="edit-need-${resource}-${customerIndex}"
+                               value="${need}" min="0">
+                    </div>
+                </div>
+            `;
+        });
+
+        formHTML += `
+            <div class="edit-form-buttons">
+                <button class="btn btn-primary" id="save-customer-${customerIndex}-btn">保存</button>
+                <button class="btn btn-secondary" id="cancel-customer-${customerIndex}-btn">取消</button>
+            </div>
+        </div>`;
+
+        customerElem.insertAdjacentHTML('beforeend', formHTML);
+
+        document.getElementById(`save-customer-${customerIndex}-btn`).addEventListener('click', () => {
+            resources.forEach(resource => {
+                const have = parseInt(document.getElementById(`edit-have-${resource}-${customerIndex}`).value);
+                const need = parseInt(document.getElementById(`edit-need-${resource}-${customerIndex}`).value);
+
+                this.gameState.customers[customerIndex].have[resource] = have;
+                this.gameState.customers[customerIndex].needs[resource] = need;
+            });
+
+            this.addLog(`已更新顾客 ${customerIndex + 1} 的订单信息`, 'success');
+            customerElem.querySelector('.edit-form').remove();
+            this.render();
+
+            // 如果AI已启用,重新获取预测
+            if (this.aiEnabled) {
+                this.getAIPrediction();
+            }
+        });
+
+        document.getElementById(`cancel-customer-${customerIndex}-btn`).addEventListener('click', () => {
+            customerElem.querySelector('.edit-form').remove();
+        });
+    }
+
+    // 点击地图移动到指定位置
+    moveToPosition(targetPosition) {
+        if (!this.endgameMode) return;
+
+        const currentPos = this.gameState.position;
+        const steps = (targetPosition - currentPos + 10) % 10;
+
+        if (steps === 0) {
+            this.addLog('已经在该位置', 'info');
+            return;
+        }
+
+        // 更新位置
+        this.gameState.position = targetPosition;
+        this.gameState.resource_type = this.gameState.map[targetPosition];
+        this.gameState.collectable = true;
+
+        this.addLog(`已移动到位置 [${targetPosition}] ${this.gameState.resource_type}`, 'success');
+        this.render();
+
+        // 如果AI已启用,重新获取预测
+        if (this.aiEnabled) {
+            this.getAIPrediction();
+        }
     }
 }
 
