@@ -126,6 +126,7 @@
                             <small>36维向量，用于AI输入</small>
                             <div id="obs-preview" class="obs-preview"></div>
                         </div>
+                        <button id="adopt-ai-suggestion-btn" class="btn btn-primary" style="margin-top: 10px; width: 100%;">采纳</button>
                     </div>
                 </div>
             </div>
@@ -137,6 +138,15 @@
                     <h2>顾客订单</h2>
                     <div id="customers-container">
                         <!-- 动态生成 -->
+                    </div>
+                    <!-- 残局模式下的快速添加资源按钮 -->
+                    <div id="endgame-resource-buttons" style="display: none; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                        <h3 style="font-size: 14px; margin-bottom: 10px; color: #4a5568;">快速添加资源</h3>
+                        <div style="display: flex; gap: 8px; flex-direction: column;">
+                            <button id="add-ice-btn" class="btn btn-secondary" style="font-size: 13px; padding: 6px 10px;">❄️ 冰 +15</button>
+                            <button id="add-iron-btn" class="btn btn-secondary" style="font-size: 13px; padding: 6px 10px;">⚙️ 铁 +15</button>
+                            <button id="add-fire-btn" class="btn btn-secondary" style="font-size: 13px; padding: 6px 10px;">🔥 火 +15</button>
+                        </div>
                     </div>
                 </div>
             </div>

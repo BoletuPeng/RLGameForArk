@@ -53,6 +53,11 @@ class GameClient {
             this.getAIPrediction();
         });
 
+        // 采纳 AI 建议按钮
+        document.getElementById('adopt-ai-suggestion-btn').addEventListener('click', () => {
+            this.adoptAISuggestion();
+        });
+
         // AI 模式选择器变化
         document.getElementById('ai-mode-select').addEventListener('change', (e) => {
             this.onAIModeChange(e.target.value);
@@ -83,6 +88,19 @@ class GameClient {
             if (e.target.id === 'model-browser-modal') {
                 this.closeModelBrowser();
             }
+        });
+
+        // 残局模式快速添加资源按钮
+        document.getElementById('add-ice-btn').addEventListener('click', () => {
+            this.addResourceQuick('冰');
+        });
+
+        document.getElementById('add-iron-btn').addEventListener('click', () => {
+            this.addResourceQuick('铁');
+        });
+
+        document.getElementById('add-fire-btn').addEventListener('click', () => {
+            this.addResourceQuick('火');
         });
     }
 
@@ -219,6 +237,23 @@ class GameClient {
             console.error('获取AI预测失败:', error);
             this.addLog('获取AI预测失败', 'error');
         }
+    }
+
+    async adoptAISuggestion() {
+        if (!this.aiPrediction) {
+            this.addLog('没有可用的AI建议', 'error');
+            return;
+        }
+
+        if (this.gameState.is_game_over) {
+            this.addLog('游戏已结束', 'error');
+            return;
+        }
+
+        const actionInfo = this.aiPrediction.action_info;
+        this.addLog(`采纳AI建议: ${actionInfo.type === 'move' ? '移动' : '收集'} ${actionInfo.card_value} 点`, 'info');
+
+        await this.performAction(actionInfo.type, actionInfo.card_value);
     }
 
     toggleAI() {
@@ -786,16 +821,19 @@ class GameClient {
         this.endgameMode = !this.endgameMode;
         const btn = document.getElementById('toggle-endgame-btn');
         const gameArea = document.querySelector('.game-area');
+        const resourceButtons = document.getElementById('endgame-resource-buttons');
 
         if (this.endgameMode) {
             btn.textContent = '退出残局模式';
             btn.classList.add('active');
             gameArea.classList.add('endgame-mode');
+            resourceButtons.style.display = 'block';
             this.addLog('已进入残局模式 - 可以编辑游戏状态', 'info');
         } else {
             btn.textContent = '残局模式';
             btn.classList.remove('active');
             gameArea.classList.remove('endgame-mode');
+            resourceButtons.style.display = 'none';
             this.addLog('已退出残局模式', 'info');
         }
 
@@ -988,12 +1026,19 @@ class GameClient {
         customerElem.insertAdjacentHTML('beforeend', formHTML);
 
         document.getElementById(`save-customer-${customerIndex}-btn`).addEventListener('click', async () => {
+            // 清空现有的 needs 和 have
+            this.gameState.customers[customerIndex].needs = {};
+            this.gameState.customers[customerIndex].have = {};
+
             resources.forEach(resource => {
                 const have = parseInt(document.getElementById(`edit-have-${resource}-${customerIndex}`).value);
                 const need = parseInt(document.getElementById(`edit-need-${resource}-${customerIndex}`).value);
 
-                this.gameState.customers[customerIndex].have[resource] = have;
-                this.gameState.customers[customerIndex].needs[resource] = need;
+                // 只保存需求量 > 0 且不是 NaN 的资源
+                if (!isNaN(need) && need > 0) {
+                    this.gameState.customers[customerIndex].needs[resource] = need;
+                    this.gameState.customers[customerIndex].have[resource] = isNaN(have) ? 0 : Math.min(have, need);
+                }
             });
 
             // 同步状态到后端
@@ -1051,6 +1096,49 @@ class GameClient {
         // 如果AI已启用,重新获取预测
         if (this.aiEnabled) {
             this.getAIPrediction();
+        }
+    }
+
+    // 快速添加资源（残局模式）
+    async addResourceQuick(resourceType) {
+        if (!this.gameId || !this.endgameMode) return;
+
+        try {
+            const response = await fetch(`/api/game/${this.gameId}/add_resource`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    resource_type: resourceType,
+                    amount: 15
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                this.addLog(`添加资源失败: ${data.error}`, 'error');
+                return;
+            }
+
+            // 更新游戏状态
+            this.gameState = data.state;
+            this.render();
+
+            this.addLog(`成功添加 15 个${resourceType}`, 'success');
+
+            if (data.tokens_earned > 0) {
+                this.addLog(`🎉 完成订单，获得 ${data.tokens_earned} 代币！`, 'success');
+            }
+
+            // 如果AI已启用,重新获取预测
+            if (this.aiEnabled) {
+                this.getAIPrediction();
+            }
+        } catch (error) {
+            console.error('添加资源失败:', error);
+            this.addLog('添加资源失败', 'error');
         }
     }
 }
