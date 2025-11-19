@@ -353,6 +353,8 @@ if __name__ == "__main__":
     parser.add_argument('--episodes', type=int, default=10, help='评估轮数')
     parser.add_argument('--n-eval-envs', type=int, default=4,
                         help='评估时的并行环境数（默认4，增加可以加快评估速度）')
+    parser.add_argument('--gamma', type=float, default=0.99,
+                        help='折扣因子gamma（默认0.99，范围0-1，越大越重视长期回报）')
 
     args = parser.parse_args()
 
@@ -362,6 +364,7 @@ if __name__ == "__main__":
         print(f"  训练步数: {args.timesteps:,}")
         print(f"  并行环境: {args.n_envs}")
         print(f"  网络架构: {args.network}")
+        print(f"  折扣因子gamma: {args.gamma}")
         print(f"  辅助奖励系数: {args.auxiliary_reward_coef}")
         print(f"  启用评估: {not args.no_eval}")
         if args.resume:
@@ -378,6 +381,7 @@ if __name__ == "__main__":
             total_timesteps=args.timesteps,
             n_envs=args.n_envs,
             network_arch=args.network,
+            gamma=args.gamma,
             enable_eval=not args.no_eval,
             auxiliary_reward_coef=args.auxiliary_reward_coef,
             resume_from=args.resume
