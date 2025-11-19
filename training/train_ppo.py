@@ -209,12 +209,18 @@ def train_ppo(
             print(f"从已有模型继续训练: {model_path}")
             print("=" * 60)
             model = MaskablePPO.load(model_path, env=env, device='cpu')
-            # 更新学习率和其他参数
+
+            # 更新超参数
             model.learning_rate = learning_rate
             model.n_steps = n_steps
             model.batch_size = batch_size
             model.n_epochs = n_epochs
             model.gamma = gamma
+
+            # 重要：重新初始化模型内部状态（包括rollout buffer）
+            # 这样可以确保buffer大小与新的n_steps匹配
+            print(f"重新初始化rollout buffer (n_steps={n_steps}, buffer大小={n_steps * n_envs})...")
+            model._setup_model()
 
     if resume_from is None:
         # 从头开始训练
