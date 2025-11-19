@@ -17,7 +17,7 @@ class ResourceGameEnv(gym.Env):
     """
     资源收集游戏的 Gymnasium 环境
 
-    观测空间：36维向量（详见 game_core.py 中的 get_observation）
+    观测空间：29维向量（详见 game_core.py 中的 get_observation）
     动作空间：6个离散动作
         - 0-2: 使用1点、2点、3点牌进行移动
         - 3-5: 使用1点、2点、3点牌进行收集
@@ -49,11 +49,11 @@ class ResourceGameEnv(gym.Env):
         self.game = ResourceGame(rounds=rounds, seed=seed)
 
         # 定义观测空间和动作空间
-        # 观测：36维连续向量
+        # 观测：29维连续向量
         self.observation_space = spaces.Box(
             low=0.0,
             high=1.0,
-            shape=(36,),
+            shape=(29,),
             dtype=np.float32
         )
 
