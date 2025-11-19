@@ -576,26 +576,47 @@ def ai_predict(game_id: str):
 
         try:
             # 使用MaskablePPO模型进行预测
-            # MaskablePPO的predict方法支持action_masks参数
-            # 直接使用predict方法获取动作，它会自动应用mask
-            action, _states = ppo_model.predict(obs, action_masks=valid_actions, deterministic=False)
+            # 重要：为了确保前端显示的概率分布与选择的动作一致，
+            # 我们需要手动计算masked概率分布，然后从中选择最优动作
 
-            # 为了获取动作概率分布，我们仍然需要使用policy
+            # 1. 将观测转换为张量
             obs_tensor = torch.FloatTensor(obs.reshape(1, -1))
             device = next(ppo_model.policy.parameters()).device
             obs_tensor = obs_tensor.to(device)
 
-            # 获取动作概率分布
-            action_probs = ppo_model.policy.get_distribution(obs_tensor).distribution.probs.detach().cpu().numpy()[0]
+            # 2. 获取原始动作logits（未应用softmax前的值）
+            # MaskablePPO使用特殊的mask方式：将无效动作的logits设为-inf
+            with torch.no_grad():
+                # 获取actor网络的输出（logits）
+                features = ppo_model.policy.extract_features(obs_tensor)
+                if hasattr(ppo_model.policy, 'mlp_extractor'):
+                    latent_pi = ppo_model.policy.mlp_extractor.forward_actor(features)
+                else:
+                    latent_pi = features
+                logits = ppo_model.policy.action_net(latent_pi)
 
-            # 应用有效动作掩码
-            masked_probs = action_probs * valid_actions
-            if masked_probs.sum() == 0:
+                # 3. 应用action mask（将无效动作的logits设为-inf）
+                # 这与MaskablePPO内部的做法一致
+                mask_tensor = torch.FloatTensor(valid_actions).to(device)
+                # 对于mask=0的位置，设置为-inf；mask=1的位置保持不变
+                masked_logits = torch.where(
+                    mask_tensor.bool(),
+                    logits[0],
+                    torch.tensor(float('-inf')).to(device)
+                )
+
+                # 4. 计算masked后的概率分布
+                action_probs_tensor = torch.nn.functional.softmax(masked_logits, dim=-1)
+                action_probs = action_probs_tensor.cpu().numpy()
+
+                # 5. 选择概率最高的动作（deterministic）
+                # 这样前端显示的建议动作就是概率最高的那个
+                action = int(np.argmax(action_probs))
+                probs = action_probs
+
+            # 验证概率分布的有效性
+            if probs.sum() == 0 or not np.isfinite(probs).all():
                 return jsonify({'error': 'No valid actions from MaskablePPO model'}), 400
-
-            # 重新归一化
-            probs = masked_probs / masked_probs.sum()
-            action = int(action)  # predict返回的action已经是正确的
 
         except Exception as e:
             print(f"MaskablePPO模型推理失败: {e}")
