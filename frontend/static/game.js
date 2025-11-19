@@ -134,6 +134,13 @@ class GameClient {
 
             const data = await response.json();
 
+            // 处理错误响应（400等）
+            if (!response.ok || !data.result) {
+                const errorMsg = data.error || data.message || '执行动作失败';
+                this.addLog(errorMsg, 'error');
+                return;
+            }
+
             if (data.result.success) {
                 // 检测回合是否切换
                 const oldRound = this.previousRound;
@@ -743,6 +750,38 @@ class GameClient {
 
     // ===== 残局模式相关方法 =====
 
+    async updateGameStateToBackend(updates) {
+        if (!this.gameId || !this.endgameMode) return;
+
+        try {
+            const response = await fetch(`/api/game/${this.gameId}/update_state`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(updates)
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                this.addLog(`同步状态失败: ${data.error || '未知错误'}`, 'error');
+                return false;
+            }
+
+            // 更新本地状态
+            if (data.state) {
+                this.gameState = data.state;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('同步状态失败:', error);
+            this.addLog('同步状态到服务器失败', 'error');
+            return false;
+        }
+    }
+
     toggleEndgameMode() {
         this.endgameMode = !this.endgameMode;
         const btn = document.getElementById('toggle-endgame-btn');
@@ -801,7 +840,7 @@ class GameClient {
 
         infoCard.appendChild(form);
 
-        document.getElementById('save-state-btn').addEventListener('click', () => {
+        document.getElementById('save-state-btn').addEventListener('click', async () => {
             const newRound = parseInt(document.getElementById('edit-round').value);
             const newTokens = parseInt(document.getElementById('edit-tokens').value);
             const newCoef = parseInt(document.getElementById('edit-coef').value);
@@ -810,7 +849,17 @@ class GameClient {
             this.gameState.tokens = newTokens;
             this.gameState.resource_coef = newCoef;
 
-            this.addLog(`已更新游戏状态: 回合=${newRound}, 代币=${newTokens}, 系数=${newCoef}`, 'success');
+            // 同步状态到后端
+            const success = await this.updateGameStateToBackend({
+                current_round: newRound,
+                tokens: newTokens,
+                resource_coef: newCoef
+            });
+
+            if (success) {
+                this.addLog(`已更新游戏状态: 回合=${newRound}, 代币=${newTokens}, 系数=${newCoef}`, 'success');
+            }
+
             form.remove();
             this.render();
 
@@ -862,14 +911,22 @@ class GameClient {
 
         handContainer.appendChild(form);
 
-        document.getElementById('save-hand-btn').addEventListener('click', () => {
+        document.getElementById('save-hand-btn').addEventListener('click', async () => {
             const count1 = parseInt(document.getElementById('edit-card-1').value);
             const count2 = parseInt(document.getElementById('edit-card-2').value);
             const count3 = parseInt(document.getElementById('edit-card-3').value);
 
             this.gameState.hand = { 1: count1, 2: count2, 3: count3 };
 
-            this.addLog(`已更新手牌: 1点×${count1}, 2点×${count2}, 3点×${count3}`, 'success');
+            // 同步状态到后端
+            const success = await this.updateGameStateToBackend({
+                hand: { 1: count1, 2: count2, 3: count3 }
+            });
+
+            if (success) {
+                this.addLog(`已更新手牌: 1点×${count1}, 2点×${count2}, 3点×${count3}`, 'success');
+            }
+
             form.remove();
             this.render();
 
@@ -930,7 +987,7 @@ class GameClient {
 
         customerElem.insertAdjacentHTML('beforeend', formHTML);
 
-        document.getElementById(`save-customer-${customerIndex}-btn`).addEventListener('click', () => {
+        document.getElementById(`save-customer-${customerIndex}-btn`).addEventListener('click', async () => {
             resources.forEach(resource => {
                 const have = parseInt(document.getElementById(`edit-have-${resource}-${customerIndex}`).value);
                 const need = parseInt(document.getElementById(`edit-need-${resource}-${customerIndex}`).value);
@@ -939,7 +996,15 @@ class GameClient {
                 this.gameState.customers[customerIndex].needs[resource] = need;
             });
 
-            this.addLog(`已更新顾客 ${customerIndex + 1} 的订单信息`, 'success');
+            // 同步状态到后端
+            const success = await this.updateGameStateToBackend({
+                customers: this.gameState.customers
+            });
+
+            if (success) {
+                this.addLog(`已更新顾客 ${customerIndex + 1} 的订单信息`, 'success');
+            }
+
             customerElem.querySelector('.edit-form').remove();
             this.render();
 
@@ -955,7 +1020,7 @@ class GameClient {
     }
 
     // 点击地图移动到指定位置
-    moveToPosition(targetPosition) {
+    async moveToPosition(targetPosition) {
         if (!this.endgameMode) return;
 
         const currentPos = this.gameState.position;
@@ -971,7 +1036,16 @@ class GameClient {
         this.gameState.resource_type = this.gameState.map[targetPosition];
         this.gameState.collectable = true;
 
-        this.addLog(`已移动到位置 [${targetPosition}] ${this.gameState.resource_type}`, 'success');
+        // 同步状态到后端
+        const success = await this.updateGameStateToBackend({
+            position: targetPosition,
+            collectable: true
+        });
+
+        if (success) {
+            this.addLog(`已移动到位置 [${targetPosition}] ${this.gameState.resource_type}`, 'success');
+        }
+
         this.render();
 
         // 如果AI已启用,重新获取预测
