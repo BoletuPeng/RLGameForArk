@@ -438,14 +438,18 @@ class GameClient {
         const probsContainer = document.getElementById('action-probs');
         probsContainer.innerHTML = '';
 
-        pred.probabilities.forEach((prob, index) => {
+        // 只渲染前6个动作，避免undefined
+        actionNames.forEach((name, index) => {
+            const prob = pred.probabilities[index];
+            const isValid = pred.valid_actions[index] > 0;
+
             const probBar = document.createElement('div');
-            probBar.className = 'prob-bar';
+            probBar.className = `prob-bar ${isValid ? 'valid' : 'invalid'}`;
 
             const percentage = (prob * 100).toFixed(1);
 
             probBar.innerHTML = `
-                <div class="prob-label">${actionNames[index]}</div>
+                <div class="prob-label">${name}</div>
                 <div class="prob-fill">
                     <div class="prob-fill-inner" style="width: ${percentage}%"></div>
                 </div>
@@ -460,17 +464,6 @@ class GameClient {
         const obsArray = pred.observation;
         const obsText = `[${obsArray.slice(0, 10).map(v => v.toFixed(2)).join(', ')}...] (共${obsArray.length}维)`;
         obsPreview.textContent = obsText;
-
-        // 渲染有效动作
-        const validActionsContainer = document.getElementById('valid-actions-info');
-        validActionsContainer.innerHTML = '';
-
-        pred.valid_actions.forEach((valid, index) => {
-            const indicator = document.createElement('div');
-            indicator.className = `valid-action-indicator ${valid ? 'valid' : 'invalid'}`;
-            indicator.textContent = actionNames[index];
-            validActionsContainer.appendChild(indicator);
-        });
     }
 
     showGameOver() {
