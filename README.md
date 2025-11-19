@@ -103,7 +103,7 @@ cd training
 python train_random.py --episodes 100
 ```
 
-#### 2. PPO算法训练
+#### 2. MaskablePPO算法训练(支持自动action masking)
 
 ```bash
 cd training
@@ -113,6 +113,8 @@ python train_ppo.py --mode train --timesteps 100000 --n-envs 8
 参数说明：
 - `--timesteps`：训练总步数
 - `--n-envs`：并行环境数量（建议4-16）
+
+**新特性**：现在使用MaskablePPO算法,自动处理无效动作掩码,提升训练效率和性能。
 
 #### 3. 评估训练好的模型
 
@@ -190,19 +192,24 @@ POST /api/game/<game_id>/ai/predict
 你可以训练自己的模型并集成到Web界面中：
 
 ```python
-# 1. 训练模型
-from stable_baselines3 import PPO
+# 1. 训练模型(使用MaskablePPO)
+from sb3_contrib import MaskablePPO
+from sb3_contrib.common.wrappers import ActionMasker
 from rl_env.game_env import ResourceGameEnv
 
+def mask_fn(env):
+    return env.game.get_valid_actions()
+
 env = ResourceGameEnv(rounds=10)
-model = PPO("MlpPolicy", env, verbose=1)
+env = ActionMasker(env, mask_fn)  # 添加action masking支持
+model = MaskablePPO("MlpPolicy", env, verbose=1)
 model.learn(total_timesteps=100000)
 model.save("my_model")
 
 # 2. 加载并预测
-model = PPO.load("my_model")
+model = MaskablePPO.load("my_model")
 obs, info = env.reset()
-action, _states = model.predict(obs)
+action, _states = model.predict(obs)  # 自动使用action masks
 ```
 
 ## 📈 性能优化

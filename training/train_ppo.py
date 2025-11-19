@@ -41,14 +41,15 @@ from rl_env.parallel_env import make_parallel_env
 import numpy as np
 
 try:
-    from stable_baselines3 import PPO
+    from sb3_contrib import MaskablePPO
+    from sb3_contrib.common.wrappers import ActionMasker
     from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
     from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
     from stable_baselines3.common.monitor import Monitor
     HAS_SB3 = True
 except ImportError:
     HAS_SB3 = False
-    print("警告：未安装 stable-baselines3，请运行：pip install stable-baselines3")
+    print("警告：未安装 sb3-contrib，请运行：pip install sb3-contrib")
 
 
 class InvalidActionMaskingCallback(BaseCallback):
@@ -86,10 +87,16 @@ class InvalidActionMaskingCallback(BaseCallback):
             self.last_episode_count = current_count
 
 
+def mask_fn(env):
+    """提取action mask的函数,用于ActionMasker包装器"""
+    return env.game.get_valid_actions()
+
+
 def make_env(rank, seed=0, auxiliary_reward_coef=1.0):
     """创建环境的工厂函数"""
     def _init():
         env = ResourceGameEnv(rounds=10, seed=seed + rank, auxiliary_reward_coef=auxiliary_reward_coef)
+        env = ActionMasker(env, mask_fn)  # 使用ActionMasker包装器自动提供action masks
         env = Monitor(env)
         return env
     return _init
@@ -109,7 +116,7 @@ def train_ppo(
     auxiliary_reward_coef=1.0,
     resume_from=None
 ):
-    """使用PPO训练智能体
+    """使用MaskablePPO训练智能体(自动使用action masking)
 
     Args:
         network_arch: 网络架构规模
@@ -201,7 +208,7 @@ def train_ppo(
             print("=" * 60)
             print(f"从已有模型继续训练: {model_path}")
             print("=" * 60)
-            model = PPO.load(model_path, env=env, device='cpu')
+            model = MaskablePPO.load(model_path, env=env, device='cpu')
             # 更新学习率和其他参数
             model.learning_rate = learning_rate
             model.n_steps = n_steps
@@ -212,11 +219,11 @@ def train_ppo(
     if resume_from is None:
         # 从头开始训练
         print("=" * 60)
-        print(f"创建PPO模型 - 网络架构: {network_arch}")
+        print(f"创建MaskablePPO模型 (自动action masking) - 网络架构: {network_arch}")
         print(f"  网络结构: {net_arch}")
         print(f"  估算参数量: ~{estimated_params:,} 个")
         print("=" * 60)
-        model = PPO(
+        model = MaskablePPO(
             "MlpPolicy",
             env,
             learning_rate=learning_rate,
@@ -287,11 +294,11 @@ def evaluate_model(model_path, num_episodes=10, n_eval_envs=4):
         n_eval_envs: 并行评估环境数（默认4个）
     """
     if not HAS_SB3:
-        print("错误：需要安装 stable-baselines3")
+        print("错误：需要安装 sb3-contrib")
         return
 
     print(f"加载模型: {model_path}")
-    model = PPO.load(model_path, device='cpu')
+    model = MaskablePPO.load(model_path, device='cpu')
 
     # 使用并行环境加速评估
     print(f"创建 {n_eval_envs} 个并行评估环境...")
