@@ -360,16 +360,17 @@ class ResourceGame:
         - 位置（10维，one-hot）
         - 资源系数（1维）
         - 当前回合（1维）
-        - 是否可收集（1维）
-        - 上次收集代价（1维，0-3）
-        - 顾客需求和进度（每个顾客6维 x 3 = 18维）
-          - 需求资源1类型（归一化）
-          - 需求资源1数量（归一化）
-          - 需求资源1进度（归一化）
-          - （如果有第二种资源，类似）
+        - 是否可普通收集（1维）
+        - 是否可连击（1维）
+        - 上次收集代价（2维 one-hot）：[收集1?, 收集2?]
+          - 如果上次收集用1点：[1, 0]
+          - 如果上次收集用2点：[0, 1]
+          - 如果上次收集用3点或上次动作不是收集：[0, 0]
+        - 顾客需求信息（9维 = 每个顾客3维 x 3个顾客）
+          - 每个顾客3维：[冰仍需量, 铁仍需量, 火仍需量]
         - 代币数（1维）
 
-        总维度：3 + 10 + 1 + 1 + 1 + 1 + 18 + 1 = 36
+        总维度：3 + 10 + 1 + 1 + 1 + 1 + 2 + 9 + 1 = 29
         """
         obs = []
 
@@ -389,34 +390,36 @@ class ResourceGame:
         # 当前回合（归一化）
         obs.append(self.current_round / self.rounds)
 
-        # 是否可收集
+        # 是否可普通收集
         obs.append(1.0 if self.collectable else 0.0)
 
-        # 上次收集代价（归一化）
-        obs.append((self.last_collect_cost or 0) / 3.0)
+        # 是否可连击
+        can_combo = len(self.can_combo_values()) > 0
+        obs.append(1.0 if can_combo else 0.0)
 
-        # 顾客信息（每个6维 x 3）
+        # 上次收集代价（2维 one-hot）
+        last_collect_1 = 0.0
+        last_collect_2 = 0.0
+        if self.last_collect_cost == 1 and not self.last_action_was_move:
+            last_collect_1 = 1.0
+        elif self.last_collect_cost == 2 and not self.last_action_was_move:
+            last_collect_2 = 1.0
+        obs.append(last_collect_1)
+        obs.append(last_collect_2)
+
+        # 顾客信息（每个顾客3维：冰/铁/火仍需量）
         for cust in self.customers:
-            cust_obs = [0] * 6
+            cust_obs = [0.0, 0.0, 0.0]  # [冰, 铁, 火]
 
-            # 提取需求信息
-            needs_items = list(cust.needs.items())
-            if len(needs_items) >= 1:
-                res1_type, res1_need = needs_items[0]
-                res1_have = cust.have.get(res1_type, 0)
-                # 资源类型（不编码one-hot，直接用ID/2归一化）
-                cust_obs[0] = RESOURCE_TYPE_TO_ID[res1_type] / 2.0
-                # 需求数量（归一化，最大假设100）
-                cust_obs[1] = res1_need / 100.0
-                # 进度比例
-                cust_obs[2] = res1_have / res1_need if res1_need > 0 else 0
-
-            if len(needs_items) >= 2:
-                res2_type, res2_need = needs_items[1]
-                res2_have = cust.have.get(res2_type, 0)
-                cust_obs[3] = RESOURCE_TYPE_TO_ID[res2_type] / 2.0
-                cust_obs[4] = res2_need / 100.0
-                cust_obs[5] = res2_have / res2_need if res2_need > 0 else 0
+            # 计算每种资源的仍需量（需求量 - 已有量）
+            for res_type in RESOURCE_TYPES:
+                res_id = RESOURCE_TYPE_TO_ID[res_type]
+                if res_type in cust.needs:
+                    need = cust.needs[res_type]
+                    have = cust.have.get(res_type, 0)
+                    remaining = max(0, need - have)
+                    # 归一化（最大假设100）
+                    cust_obs[res_id] = remaining / 100.0
 
             obs.extend(cust_obs)
 
