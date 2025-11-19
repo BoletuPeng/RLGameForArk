@@ -127,7 +127,7 @@ pip install stable-baselines3 torch
 **解决方案**:
 - 检查后端控制台的详细错误信息
 - 确认模型文件未损坏
-- 确认观测空间维度与训练时一致（38维）
+- 确认观测空间维度与训练时一致（36维）
 
 ## 技术细节
 
@@ -146,7 +146,7 @@ pip install stable-baselines3 torch
    - 缓存到内存中供后续使用
 
 3. 模型进行推理：
-   - 获取当前游戏状态的观测向量（38维）
+   - 获取当前游戏状态的观测向量（36维）
    - 通过PPO策略网络计算动作概率分布
    - 应用有效动作掩码（invalid actions概率设为0）
    - 重新归一化概率分布
@@ -158,7 +158,6 @@ pip install stable-baselines3 torch
      "action": 5,
      "action_info": {
        "type": "collect",
-       "card_index": 0,
        "card_value": 3,
        "is_combo": false
      },

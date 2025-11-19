@@ -1,6 +1,6 @@
 """
 测试新的replay格式
-验证transitions是否正确记录了38维观测、动作掩码和选择的动作
+验证transitions是否正确记录了36维观测、动作掩码和选择的动作
 """
 import sys
 import os

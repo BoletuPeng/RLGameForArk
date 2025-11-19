@@ -315,9 +315,9 @@ def save_replay(game_id: str):
     保存对局记录
 
     新格式包含完整的transitions数据，每个transition包含：
-    - observation: 38维观测向量
-    - valid_actions: 10维动作掩码
-    - action: 选择的动作索引（0-9）
+    - observation: 36维观测向量
+    - valid_actions: 6维动作掩码
+    - action: 选择的动作索引（0-5）
     - reward, next_observation, done等
 
     请求格式：
