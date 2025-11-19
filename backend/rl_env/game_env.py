@@ -108,10 +108,10 @@ class ResourceGameEnv(gym.Env):
         info = {}
 
         # 解析动作
-        if action < 5:
-            # 移动动作
-            card_index = action
-            success, msg = self.game.move(card_index)
+        if action < 3:
+            # 移动动作 (action 0-2 -> card_value 1-3)
+            card_value = action + 1
+            success, msg = self.game.move(card_value)
             if success:
                 info['action_type'] = 'move'
                 info['message'] = msg
@@ -128,9 +128,9 @@ class ResourceGameEnv(gym.Env):
                 info['action_type'] = 'invalid_move'
                 info['message'] = msg
         else:
-            # 收集动作
-            card_index = action - 5
-            success, msg, tokens_earned, customer_gains = self.game.collect(card_index)
+            # 收集动作 (action 3-5 -> card_value 1-3)
+            card_value = action - 3 + 1
+            success, msg, tokens_earned, customer_gains = self.game.collect(card_value)
             if success:
                 # 1. Token奖励：每个token获得对应1的奖励（不受辅助奖励系数影响）
                 reward = tokens_earned
