@@ -122,10 +122,10 @@ def test_transitions_format():
         obs_dim = len(first_transition['observation'])
         valid_actions_dim = len(first_transition['valid_actions'])
         print(f"\n维度验证:")
-        print(f"  observation维度: {obs_dim} (期望: 38)")
-        print(f"  valid_actions维度: {valid_actions_dim} (期望: 10)")
+        print(f"  observation维度: {obs_dim} (期望: 29)")
+        print(f"  valid_actions维度: {valid_actions_dim} (期望: 6)")
 
-        if obs_dim == 38 and valid_actions_dim == 10:
+        if obs_dim == 29 and valid_actions_dim == 6:
             print("  ✓ 维度正确！")
         else:
             print("  ✗ 维度错误！")
@@ -135,7 +135,7 @@ def test_transitions_format():
         print(f"\n动作索引验证:")
         print(f"  动作索引范围: {min(actions)} - {max(actions)}")
         print(f"  所有动作: {actions}")
-        if all(0 <= a < 10 for a in actions):
+        if all(0 <= a < 6 for a in actions):
             print("  ✓ 动作索引在有效范围内！")
         else:
             print("  ✗ 动作索引超出范围！")

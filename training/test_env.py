@@ -69,7 +69,7 @@ def test_parallel_env():
 
     # 重置环境
     obs, infos = envs.reset()
-    print(f"\n观测形状: {obs.shape} (应该是 {n_envs} x 38)")
+    print(f"\n观测形状: {obs.shape} (应该是 {n_envs} x 29)")
 
     # 运行几步
     for step in range(5):

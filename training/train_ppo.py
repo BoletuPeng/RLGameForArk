@@ -152,8 +152,8 @@ def train_ppo(
     # 估算参数量
     def estimate_params(arch):
         """估算网络参数量"""
-        input_dim = 38  # 观测空间维度
-        actor_output = 10  # 动作空间维度
+        input_dim = 29  # 观测空间维度
+        actor_output = 6  # 动作空间维度
         critic_output = 1  # 价值输出
 
         # 共享层参数

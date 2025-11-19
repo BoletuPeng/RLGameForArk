@@ -5,7 +5,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
-def estimate_params(arch, input_dim=38, actor_output=10, critic_output=1):
+def estimate_params(arch, input_dim=29, actor_output=6, critic_output=1):
     """估算网络参数量"""
     # Actor网络参数
     actor_params = 0
@@ -53,14 +53,14 @@ print("\n详细参数分配 (medium 网络: [128, 128]):")
 print("-" * 70)
 
 arch = [128, 128]
-input_dim = 38
+input_dim = 29
 
 print("\nActor 网络 (策略网络):")
 print(f"  输入层 → 隐藏层1: {input_dim} × 128 + 128(bias) = {input_dim * 128 + 128:,}")
 print(f"  隐藏层1 → 隐藏层2: 128 × 128 + 128(bias) = {128 * 128 + 128:,}")
-print(f"  隐藏层2 → 动作输出: 128 × 10 + 10(bias) = {128 * 10 + 10:,}")
+print(f"  隐藏层2 → 动作输出: 128 × 6 + 6(bias) = {128 * 6 + 6:,}")
 
-actor_params = (input_dim * 128 + 128) + (128 * 128 + 128) + (128 * 10 + 10)
+actor_params = (input_dim * 128 + 128) + (128 * 128 + 128) + (128 * 6 + 6)
 print(f"  Actor 总参数: {actor_params:,}")
 
 print("\nCritic 网络 (价值网络):")
