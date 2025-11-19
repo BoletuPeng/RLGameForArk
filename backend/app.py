@@ -522,7 +522,7 @@ def ai_predict(game_id: str):
             return jsonify({'error': 'No valid actions'}), 400
 
         action = np.random.choice(valid_indices)
-        probs = np.zeros(10)
+        probs = np.zeros(6)
         probs[valid_indices] = 1.0 / len(valid_indices)
 
     elif model_type == 'rule_based':
@@ -607,7 +607,7 @@ def ai_predict(game_id: str):
     elif model_type == 'custom':
         # 自定义模型提供的概率分布
         probs = np.array(data.get('probabilities', []))
-        if len(probs) != 10:
+        if len(probs) != 6:
             return jsonify({'error': 'Invalid probabilities length'}), 400
 
         # 应用有效动作掩码

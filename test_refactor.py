@@ -29,7 +29,7 @@ def test_basic_game():
     # 检查观测空间维度
     obs = game.get_observation()
     print(f"✓ 观测空间维度: {len(obs)}")
-    assert len(obs) == 36, f"观测空间应该是36维，实际是{len(obs)}维"
+    assert len(obs) == 29, f"观测空间应该是29维，实际是{len(obs)}维"
 
     # 检查手牌部分的观测
     hand_obs = obs[:3]
