@@ -14,14 +14,14 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from game_core import ResourceGame
 
-# 尝试导入stable_baselines3以支持PPO模型
+# 尝试导入sb3_contrib以支持MaskablePPO模型
 try:
-    from stable_baselines3 import PPO
+    from sb3_contrib import MaskablePPO
     import torch
     HAS_SB3 = True
 except ImportError:
     HAS_SB3 = False
-    print("警告: 未安装 stable-baselines3，PPO模型功能将不可用")
+    print("警告: 未安装 sb3-contrib，MaskablePPO模型功能将不可用")
 
 app = Flask(__name__,
             template_folder='../frontend/templates',
@@ -41,16 +41,16 @@ ppo_models = {
 
 def load_ppo_model(model_name='best'):
     """
-    加载PPO模型
+    加载MaskablePPO模型
 
     Args:
         model_name: 'best' 或 'final'
 
     Returns:
-        加载的PPO模型，如果失败返回None
+        加载的MaskablePPO模型，如果失败返回None
     """
     if not HAS_SB3:
-        print("错误: 未安装 stable-baselines3")
+        print("错误: 未安装 sb3-contrib")
         return None
 
     # 检查缓存
@@ -74,13 +74,13 @@ def load_ppo_model(model_name='best'):
         return None
 
     try:
-        print(f"正在加载PPO模型: {model_path}")
-        model = PPO.load(model_path)
+        print(f"正在加载MaskablePPO模型: {model_path}")
+        model = MaskablePPO.load(model_path)
         ppo_models[model_name] = model
-        print(f"PPO模型加载成功: {model_name}")
+        print(f"MaskablePPO模型加载成功: {model_name}")
         return model
     except Exception as e:
-        print(f"加载PPO模型失败: {e}")
+        print(f"加载MaskablePPO模型失败: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -530,9 +530,9 @@ def ai_predict(game_id: str):
         probs, action = rule_based_policy(game, valid_actions)
 
     elif model_type in ['ppo_best', 'ppo_final', 'ppo_custom']:
-        # PPO模型推理
+        # MaskablePPO模型推理
         if not HAS_SB3:
-            return jsonify({'error': 'stable-baselines3 not installed'}), 500
+            return jsonify({'error': 'sb3-contrib not installed'}), 500
 
         # 加载对应的模型
         if model_type == 'ppo_custom':
@@ -558,11 +558,11 @@ def ai_predict(game_id: str):
                 return jsonify({'error': f'Model file not found: {model_path}'}), 404
 
             try:
-                print(f"正在加载自定义PPO模型: {abs_model_path}")
-                ppo_model = PPO.load(abs_model_path)
-                print(f"自定义PPO模型加载成功")
+                print(f"正在加载自定义MaskablePPO模型: {abs_model_path}")
+                ppo_model = MaskablePPO.load(abs_model_path)
+                print(f"自定义MaskablePPO模型加载成功")
             except Exception as e:
-                print(f"加载自定义PPO模型失败: {e}")
+                print(f"加载自定义MaskablePPO模型失败: {e}")
                 import traceback
                 traceback.print_exc()
                 return jsonify({'error': f'Failed to load custom model: {str(e)}'}), 500
@@ -572,17 +572,16 @@ def ai_predict(game_id: str):
             ppo_model = load_ppo_model(model_name)
 
             if ppo_model is None:
-                return jsonify({'error': f'Failed to load PPO model: {model_name}'}), 500
+                return jsonify({'error': f'Failed to load MaskablePPO model: {model_name}'}), 500
 
         try:
-            # 使用PPO模型进行预测
-            # predict返回: (action, _states)
-            # 但我们需要获取动作概率分布
+            # 使用MaskablePPO模型进行预测
+            # MaskablePPO的predict方法支持action_masks参数
+            # 直接使用predict方法获取动作，它会自动应用mask
+            action, _states = ppo_model.predict(obs, action_masks=valid_actions, deterministic=False)
 
-            # 将numpy数组转换为torch张量
+            # 为了获取动作概率分布，我们仍然需要使用policy
             obs_tensor = torch.FloatTensor(obs.reshape(1, -1))
-
-            # 检测模型所在的设备并将输入张量移动到相同设备
             device = next(ppo_model.policy.parameters()).device
             obs_tensor = obs_tensor.to(device)
 
@@ -592,17 +591,17 @@ def ai_predict(game_id: str):
             # 应用有效动作掩码
             masked_probs = action_probs * valid_actions
             if masked_probs.sum() == 0:
-                return jsonify({'error': 'No valid actions from PPO model'}), 400
+                return jsonify({'error': 'No valid actions from MaskablePPO model'}), 400
 
             # 重新归一化
             probs = masked_probs / masked_probs.sum()
-            action = int(np.argmax(probs))
+            action = int(action)  # predict返回的action已经是正确的
 
         except Exception as e:
-            print(f"PPO模型推理失败: {e}")
+            print(f"MaskablePPO模型推理失败: {e}")
             import traceback
             traceback.print_exc()
-            return jsonify({'error': f'PPO inference failed: {str(e)}'}), 500
+            return jsonify({'error': f'MaskablePPO inference failed: {str(e)}'}), 500
 
     elif model_type == 'custom':
         # 自定义模型提供的概率分布
