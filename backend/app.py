@@ -180,32 +180,36 @@ def perform_action(game_id: str):
     data = request.json
 
     action_type = data.get('type')  # 'move' or 'collect'
-    card_index = data.get('card_index')
+    card_value = data.get('card_value')
 
     if action_type not in ['move', 'collect']:
         return jsonify({'error': 'Invalid action type'}), 400
 
-    if card_index is None or card_index < 0 or card_index >= len(game.hand):
-        return jsonify({'error': 'Invalid card index'}), 400
+    if card_value is None or card_value not in [1, 2, 3]:
+        return jsonify({'error': 'Invalid card value'}), 400
+
+    # 检查是否有该点数的牌
+    if game.hand.get(card_value, 0) == 0:
+        return jsonify({'error': f'No cards with value {card_value}'}), 400
 
     # ==================== 记录transition（用于replay） ====================
     # 1. 记录执行动作前的状态
     observation = game.get_observation()
     valid_actions = game.get_valid_actions()
     old_tokens = game.tokens
-    card_value = game.hand[card_index]
 
-    # 2. 计算动作索引（0-9）
+    # 2. 计算动作索引（0-5）
+    # 动作空间：[move_1, move_2, move_3, collect_1, collect_2, collect_3]
     if action_type == 'move':
-        action_index = card_index  # 0-4
+        action_index = card_value - 1  # 0-2
     else:  # 'collect'
-        action_index = 5 + card_index  # 5-9
+        action_index = 3 + card_value - 1  # 3-5
 
     result = {'success': False}
     transition_info = {}
 
     if action_type == 'move':
-        success, msg = game.move(card_index)
+        success, msg = game.move(card_value)
         result = {
             'success': success,
             'message': msg,
@@ -213,7 +217,7 @@ def perform_action(game_id: str):
         }
         transition_info['message'] = msg
     elif action_type == 'collect':
-        success, msg, tokens, customer_gains = game.collect(card_index)
+        success, msg, tokens, customer_gains = game.collect(card_value)
         result = {
             'success': success,
             'message': msg,
@@ -243,7 +247,6 @@ def perform_action(game_id: str):
             'valid_actions': valid_actions.tolist(),
             'action': action_index,
             'action_type': action_type,
-            'card_index': card_index,
             'card_value': card_value,
             'reward': reward,
             'next_observation': next_observation.tolist(),
@@ -619,19 +622,19 @@ def ai_predict(game_id: str):
         return jsonify({'error': 'Unknown model type'}), 400
 
     # 解析动作
-    if action < 5:
+    # 动作空间：[move_1, move_2, move_3, collect_1, collect_2, collect_3]
+    if action < 3:
+        card_value = action + 1
         action_info = {
             'type': 'move',
-            'card_index': int(action),
-            'card_value': game.hand[action] if action < len(game.hand) else None
+            'card_value': int(card_value)
         }
     else:
-        card_idx = action - 5
+        card_value = action - 3 + 1
         action_info = {
             'type': 'collect',
-            'card_index': int(card_idx),
-            'card_value': game.hand[card_idx] if card_idx < len(game.hand) else None,
-            'is_combo': card_idx in game.can_combo_indices()
+            'card_value': int(card_value),
+            'is_combo': card_value in game.can_combo_values()
         }
 
     return jsonify({
@@ -650,36 +653,39 @@ def rule_based_policy(game: ResourceGame, valid_actions: np.ndarray) -> tuple:
     1. 连击收集（如果可以）
     2. 普通收集（如果资源系数高）
     3. 移动到下一个有价值的位置
+
+    动作空间：[move_1, move_2, move_3, collect_1, collect_2, collect_3]
     """
-    probs = np.zeros(10)
+    probs = np.zeros(6)
     valid_indices = np.where(valid_actions > 0)[0]
 
     if len(valid_indices) == 0:
         return probs, 0
 
     # 检查是否有连击机会
-    combo_indices = game.can_combo_indices()
-    if len(combo_indices) > 0:
+    combo_values = game.can_combo_values()
+    if len(combo_values) > 0:
         # 优先连击
-        action = 5 + combo_indices[0]
+        card_value = combo_values[0]
+        action = 3 + card_value - 1
         probs[action] = 1.0
         return probs, action
 
     # 检查是否应该收集
     if game.collectable and game.resource_coef >= 5:
         # 资源系数高时优先收集
-        collect_actions = [i for i in range(5, 10) if valid_actions[i] > 0]
+        collect_actions = [i for i in range(3, 6) if valid_actions[i] > 0]
         if len(collect_actions) > 0:
-            # 选择点数最大的卡牌收集
-            best_collect = max(collect_actions, key=lambda i: game.hand[i-5] if i-5 < len(game.hand) else 0)
+            # 选择点数最大的卡牌收集（索引越大点数越大）
+            best_collect = max(collect_actions)
             probs[best_collect] = 1.0
             return probs, best_collect
 
     # 否则移动
-    move_actions = [i for i in range(5) if valid_actions[i] > 0]
+    move_actions = [i for i in range(3) if valid_actions[i] > 0]
     if len(move_actions) > 0:
-        # 选择点数适中的卡牌移动（保留高点数用于收集）
-        action = min(move_actions, key=lambda i: game.hand[i] if i < len(game.hand) else 0)
+        # 选择点数最小的卡牌移动（保留高点数用于收集）
+        action = min(move_actions)
         probs[action] = 1.0
         return probs, action
 
@@ -725,7 +731,7 @@ def handle_perform_action(data):
     """执行动作（通过WebSocket）"""
     game_id = data.get('game_id')
     action_type = data.get('type')
-    card_index = data.get('card_index')
+    card_value = data.get('card_value')
 
     if not game_id or game_id not in game_sessions:
         emit('error', {'message': 'Invalid game_id'})
@@ -735,10 +741,10 @@ def handle_perform_action(data):
 
     result = {}
     if action_type == 'move':
-        success, msg = game.move(card_index)
+        success, msg = game.move(card_value)
         result = {'success': success, 'message': msg, 'type': 'move'}
     elif action_type == 'collect':
-        success, msg, tokens, _ = game.collect(card_index)
+        success, msg, tokens, _ = game.collect(card_value)
         result = {'success': success, 'message': msg, 'type': 'collect', 'tokens_earned': tokens}
 
     # 执行动作后检查是否需要开始新回合
