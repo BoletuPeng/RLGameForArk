@@ -511,30 +511,40 @@ body {
     margin-top: 8px;
 }
 
-.valid-actions-grid {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 6px;
+/* 概率条的有效/无效样式 */
+.prob-bar.valid .prob-label {
+    color: #22543d;
+    font-weight: 600;
 }
 
-.valid-action-indicator {
-    padding: 8px;
-    border-radius: 6px;
-    text-align: center;
-    font-size: 11px;
+.prob-bar.valid .prob-fill {
+    background: #f0fff4;
+    border: 2px solid #48bb78;
+}
+
+.prob-bar.valid .prob-fill-inner {
+    background: linear-gradient(90deg, #48bb78 0%, #38a169 100%);
+}
+
+.prob-bar.valid .prob-value {
+    color: #22543d;
     font-weight: 600;
+}
+
+.prob-bar.invalid .prob-label {
+    color: #a0aec0;
+}
+
+.prob-bar.invalid .prob-fill {
+    background: #f7fafc;
     border: 2px solid #e2e8f0;
 }
 
-.valid-action-indicator.valid {
-    background: #f0fff4;
-    border-color: #48bb78;
-    color: #22543d;
+.prob-bar.invalid .prob-fill-inner {
+    background: #cbd5e0;
 }
 
-.valid-action-indicator.invalid {
-    background: #f7fafc;
-    border-color: #e2e8f0;
+.prob-bar.invalid .prob-value {
     color: #a0aec0;
 }
 
