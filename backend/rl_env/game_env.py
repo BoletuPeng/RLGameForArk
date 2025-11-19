@@ -10,7 +10,8 @@ import os
 
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from game_core import ResourceGame
+from game_core import ResourceGame, RESOURCE_TYPE_TO_ID
+from game_core_numba import compute_resource_need_fast
 
 
 class ResourceGameEnv(gym.Env):
@@ -80,13 +81,15 @@ class ResourceGameEnv(gym.Env):
         return obs, info
 
     def _calculate_resource_need(self, resource_type: str) -> int:
-        """计算所有顾客对某个资源的总需求量（需求量 - 已拥有量）"""
-        total_need = 0
-        for cust in self.game.customers:
-            if resource_type in cust.needs:
-                need = cust.needs[resource_type]
-                have = cust.have.get(resource_type, 0)
-                total_need += max(0, need - have)
+        """计算所有顾客对某个资源的总需求量（需求量 - 已拥有量）- 使用 Numba 加速"""
+        # 获取顾客数组
+        customer_needs, customer_have, _ = self.game._get_customer_arrays()
+
+        # 获取资源索引
+        resource_idx = RESOURCE_TYPE_TO_ID[resource_type]
+
+        # 使用 numba 加速函数计算
+        total_need = compute_resource_need_fast(customer_needs, customer_have, resource_idx)
         return total_need
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:

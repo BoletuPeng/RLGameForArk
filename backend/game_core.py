@@ -4,6 +4,11 @@
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
+from game_core_numba import (
+    compute_observation_vector_fast,
+    compute_valid_actions_fast,
+    compute_resource_need_fast
+)
 
 # 三种资源类型
 RESOURCE_TYPES = ['冰', '铁', '火']
@@ -326,6 +331,28 @@ class ResourceGame:
         """游戏是否结束"""
         return self.current_round >= self.rounds and self.is_round_over()
 
+    def _get_customer_arrays(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        将顾客信息转换为 numpy 数组（用于 numba 加速）
+
+        返回:
+            customer_needs: (3, 3) 数组 - 3个顾客 x 3种资源的需求量
+            customer_have: (3, 3) 数组 - 3个顾客 x 3种资源的已有量
+            customer_is_vip: (3,) 数组 - 是否为VIP
+        """
+        customer_needs = np.zeros((3, 3), dtype=np.float32)
+        customer_have = np.zeros((3, 3), dtype=np.float32)
+        customer_is_vip = np.zeros(3, dtype=np.bool_)
+
+        for cust_idx, cust in enumerate(self.customers):
+            customer_is_vip[cust_idx] = cust.is_vip
+            for res_type in RESOURCE_TYPES:
+                res_idx = RESOURCE_TYPE_TO_ID[res_type]
+                customer_needs[cust_idx, res_idx] = cust.needs.get(res_type, 0)
+                customer_have[cust_idx, res_idx] = cust.have.get(res_type, 0)
+
+        return customer_needs, customer_have, customer_is_vip
+
     def get_state(self) -> dict:
         """
         获取完整游戏状态（用于API和可视化）
@@ -353,7 +380,7 @@ class ResourceGame:
 
     def get_observation(self) -> np.ndarray:
         """
-        获取观测向量（用于强化学习）
+        获取观测向量（用于强化学习）- 使用 Numba 加速
 
         观测维度：
         - 手牌统计（3维）：1点、2点、3点各有几张（0-5）
@@ -372,79 +399,54 @@ class ResourceGame:
 
         总维度：3 + 10 + 1 + 1 + 1 + 1 + 2 + 9 + 1 = 29
         """
-        obs = []
-
-        # 手牌统计（3维）：归一化到0-1之间，最大5张
-        obs.append(self.hand.get(1, 0) / 5.0)
-        obs.append(self.hand.get(2, 0) / 5.0)
-        obs.append(self.hand.get(3, 0) / 5.0)
-
-        # 位置（10维one-hot）
-        pos_onehot = [0] * 10
-        pos_onehot[self.position] = 1
-        obs.extend(pos_onehot)
-
-        # 资源系数（归一化，最大假设为15）
-        obs.append(self.resource_coef / 15.0)
-
-        # 当前回合（归一化）
-        obs.append(self.current_round / self.rounds)
-
-        # 是否可普通收集
-        obs.append(1.0 if self.collectable else 0.0)
+        # 获取顾客数组
+        customer_needs, customer_have, _ = self._get_customer_arrays()
 
         # 是否可连击
         can_combo = len(self.can_combo_values()) > 0
-        obs.append(1.0 if can_combo else 0.0)
 
-        # 上次收集代价（2维 one-hot）
-        last_collect_1 = 0.0
-        last_collect_2 = 0.0
-        if self.last_collect_cost == 1 and not self.last_action_was_move:
-            last_collect_1 = 1.0
-        elif self.last_collect_cost == 2 and not self.last_action_was_move:
-            last_collect_2 = 1.0
-        obs.append(last_collect_1)
-        obs.append(last_collect_2)
+        # 使用 numba 加速函数计算观测向量
+        obs = compute_observation_vector_fast(
+            hand_1=self.hand.get(1, 0),
+            hand_2=self.hand.get(2, 0),
+            hand_3=self.hand.get(3, 0),
+            position=self.position,
+            resource_coef=self.resource_coef,
+            current_round=self.current_round,
+            total_rounds=self.rounds,
+            collectable=self.collectable,
+            can_combo=can_combo,
+            last_collect_cost=self.last_collect_cost if self.last_collect_cost is not None else 0,
+            last_action_was_move=self.last_action_was_move,
+            customer_needs=customer_needs,
+            customer_have=customer_have,
+            tokens=self.tokens
+        )
 
-        # 顾客信息（每个顾客3维：冰/铁/火仍需量）
-        for cust in self.customers:
-            cust_obs = [0.0, 0.0, 0.0]  # [冰, 铁, 火]
-
-            # 计算每种资源的仍需量（需求量 - 已有量）
-            for res_type in RESOURCE_TYPES:
-                res_id = RESOURCE_TYPE_TO_ID[res_type]
-                if res_type in cust.needs:
-                    need = cust.needs[res_type]
-                    have = cust.have.get(res_type, 0)
-                    remaining = max(0, need - have)
-                    # 归一化（最大假设100）
-                    cust_obs[res_id] = remaining / 100.0
-
-            obs.extend(cust_obs)
-
-        # 代币数（归一化，最大假设20）
-        obs.append(self.tokens / 20.0)
-
-        return np.array(obs, dtype=np.float32)
+        return obs
 
     def get_valid_actions(self) -> np.ndarray:
         """
-        获取有效动作掩码（用于强化学习）
+        获取有效动作掩码（用于强化学习）- 使用 Numba 加速
         动作空间：[move_1, move_2, move_3, collect_1, collect_2, collect_3]
         返回：6维的0/1数组，1表示该动作有效
         """
-        valid = np.zeros(6, dtype=np.float32)
+        # 检查各点数是否可以连击
+        combo_values = self.can_combo_values()
+        can_combo_1 = 1 in combo_values
+        can_combo_2 = 2 in combo_values
+        can_combo_3 = 3 in combo_values
 
-        # 移动动作（0-2）：只要有对应点数的牌就有效
-        for card_value in [1, 2, 3]:
-            if self.hand.get(card_value, 0) > 0:
-                valid[card_value - 1] = 1
-
-        # 收集动作（3-5）：需要检查是否可收集
-        for card_value in [1, 2, 3]:
-            if self.can_collect(card_value):
-                valid[3 + card_value - 1] = 1
+        # 使用 numba 加速函数计算有效动作
+        valid = compute_valid_actions_fast(
+            hand_1=self.hand.get(1, 0),
+            hand_2=self.hand.get(2, 0),
+            hand_3=self.hand.get(3, 0),
+            collectable=self.collectable,
+            can_combo_1=can_combo_1,
+            can_combo_2=can_combo_2,
+            can_combo_3=can_combo_3
+        )
 
         return valid
 
