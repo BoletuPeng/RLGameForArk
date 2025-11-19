@@ -300,6 +300,83 @@ def reset_game(game_id: str):
     })
 
 
+@app.route('/api/game/<game_id>/update_state', methods=['POST'])
+def update_game_state(game_id: str):
+    """
+    更新游戏状态（用于残局模式）
+
+    请求格式：
+    {
+        "hand": {1: count1, 2: count2, 3: count3},  // 可选
+        "position": 0-9,  // 可选
+        "resource_coef": int,  // 可选
+        "current_round": int,  // 可选
+        "tokens": int,  // 可选
+        "collectable": bool,  // 可选
+        "customers": [...]  // 可选
+    }
+    """
+    if game_id not in game_sessions:
+        return jsonify({'error': 'Game not found'}), 404
+
+    game = game_sessions[game_id]
+    data = request.json or {}
+
+    # 更新手牌
+    if 'hand' in data:
+        hand = data['hand']
+        # 验证手牌格式
+        if isinstance(hand, dict):
+            # 确保所有点数都存在
+            game.hand = {
+                1: int(hand.get('1', 0) if isinstance(hand.get('1'), (int, float)) else hand.get(1, 0)),
+                2: int(hand.get('2', 0) if isinstance(hand.get('2'), (int, float)) else hand.get(2, 0)),
+                3: int(hand.get('3', 0) if isinstance(hand.get('3'), (int, float)) else hand.get(3, 0))
+            }
+
+    # 更新位置
+    if 'position' in data:
+        position = int(data['position'])
+        if 0 <= position < 10:
+            game.position = position
+            game.resource_type = game.map[position]
+
+    # 更新资源系数
+    if 'resource_coef' in data:
+        game.resource_coef = int(data['resource_coef'])
+
+    # 更新当前回合
+    if 'current_round' in data:
+        round_num = int(data['current_round'])
+        if 1 <= round_num <= game.rounds:
+            game.current_round = round_num
+
+    # 更新代币
+    if 'tokens' in data:
+        game.tokens = int(data['tokens'])
+
+    # 更新可收集状态
+    if 'collectable' in data:
+        game.collectable = bool(data['collectable'])
+
+    # 更新顾客信息
+    if 'customers' in data:
+        customers_data = data['customers']
+        if isinstance(customers_data, list) and len(customers_data) == len(game.customers):
+            for i, cust_data in enumerate(customers_data):
+                if 'have' in cust_data:
+                    for resource, amount in cust_data['have'].items():
+                        game.customers[i].have[resource] = int(amount)
+                if 'needs' in cust_data:
+                    for resource, amount in cust_data['needs'].items():
+                        game.customers[i].needs[resource] = int(amount)
+
+    return jsonify({
+        'message': 'Game state updated successfully',
+        'state': serialize_game_state(game)
+    })
+
+
 @app.route('/api/game/<game_id>/delete', methods=['DELETE'])
 def delete_game(game_id: str):
     """删除游戏会话"""
