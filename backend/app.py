@@ -364,15 +364,62 @@ def update_game_state(game_id: str):
         customers_data = data['customers']
         if isinstance(customers_data, list) and len(customers_data) == len(game.customers):
             for i, cust_data in enumerate(customers_data):
-                if 'have' in cust_data:
-                    for resource, amount in cust_data['have'].items():
-                        game.customers[i].have[resource] = int(amount)
                 if 'needs' in cust_data:
+                    # 清空现有的 needs 和 have
+                    game.customers[i].needs = {}
+                    game.customers[i].have = {}
+                    # 只保存需求量 > 0 的资源
                     for resource, amount in cust_data['needs'].items():
-                        game.customers[i].needs[resource] = int(amount)
+                        amount_int = int(amount) if not isinstance(amount, str) or amount.lower() not in ['nan', 'null', 'undefined'] else 0
+                        if amount_int > 0:
+                            game.customers[i].needs[resource] = amount_int
+                if 'have' in cust_data:
+                    # 只保存在 needs 中存在的资源的 have 值
+                    for resource, amount in cust_data['have'].items():
+                        if resource in game.customers[i].needs:
+                            amount_int = int(amount) if not isinstance(amount, str) or amount.lower() not in ['nan', 'null', 'undefined'] else 0
+                            game.customers[i].have[resource] = min(amount_int, game.customers[i].needs[resource])
 
     return jsonify({
         'message': 'Game state updated successfully',
+        'state': serialize_game_state(game)
+    })
+
+
+@app.route('/api/game/<game_id>/add_resource', methods=['POST'])
+def add_resource(game_id: str):
+    """
+    添加资源（残局模式专用）
+
+    请求格式：
+    {
+        "resource_type": "冰" | "铁" | "火",
+        "amount": 15  # 固定数量，不受资源系数影响
+    }
+    """
+    if game_id not in game_sessions:
+        return jsonify({'error': 'Game not found'}), 404
+
+    game = game_sessions[game_id]
+    data = request.json or {}
+
+    resource_type = data.get('resource_type')
+    amount = data.get('amount', 15)
+
+    if resource_type not in ['冰', '铁', '火']:
+        return jsonify({'error': 'Invalid resource type'}), 400
+
+    # 创建一个只有该资源的字典
+    produced = {r: 0 for r in ['冰', '铁', '火']}
+    produced[resource_type] = amount
+
+    # 使用游戏的 distribute 方法来分配资源并检查完成情况
+    tokens_earned, customer_gains = game.distribute(produced)
+
+    return jsonify({
+        'message': f'Added {amount} {resource_type}',
+        'tokens_earned': tokens_earned,
+        'customer_gains': customer_gains,
         'state': serialize_game_state(game)
     })
 
