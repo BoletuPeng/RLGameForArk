@@ -111,7 +111,7 @@ class GameClient {
         }
     }
 
-    async performAction(type, cardIndex) {
+    async performAction(type, cardValue) {
         if (!this.gameId) return;
 
         try {
@@ -122,7 +122,7 @@ class GameClient {
                 },
                 body: JSON.stringify({
                     type: type,
-                    card_index: cardIndex
+                    card_value: cardValue
                 })
             });
 
@@ -278,29 +278,31 @@ class GameClient {
         const handContainer = document.getElementById('hand-cards');
         handContainer.innerHTML = '';
 
-        const canComboIndices = state.can_combo_indices || [];
+        const canComboValues = state.can_combo_values || [];
 
-        // 创建带有原始索引的卡牌数组，并按卡牌值从小到大排序
-        const sortedHand = state.hand
-            .map((card, index) => ({ card, originalIndex: index }))
-            .sort((a, b) => a.card - b.card);
+        // hand 现在是一个字典：{1: count1, 2: count2, 3: count3}
+        // 按点数从小到大显示
+        for (let cardValue = 1; cardValue <= 3; cardValue++) {
+            const count = state.hand[cardValue] || 0;
 
-        sortedHand.forEach(({ card, originalIndex: index }) => {
+            if (count === 0) continue; // 跳过没有的卡牌
+
             const cardElem = document.createElement('div');
             cardElem.className = 'card';
 
-            if (canComboIndices.includes(index)) {
+            if (canComboValues.includes(cardValue)) {
                 cardElem.classList.add('can-combo');
             }
 
             cardElem.innerHTML = `
-                <div>${card}</div>
+                <div>${cardValue} 点</div>
+                <div style="font-size: 14px; color: #666;">×${count}</div>
                 <div class="card-actions">
-                    <button class="card-btn move" data-index="${index}" data-type="move">
+                    <button class="card-btn move" data-value="${cardValue}" data-type="move">
                         移动
                     </button>
-                    <button class="card-btn collect" data-index="${index}" data-type="collect">
-                        ${canComboIndices.includes(index) ? '连击' : '收集'}
+                    <button class="card-btn collect" data-value="${cardValue}" data-type="collect">
+                        ${canComboValues.includes(cardValue) ? '连击' : '收集'}
                     </button>
                 </div>
             `;
@@ -311,21 +313,21 @@ class GameClient {
 
             moveBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.performAction('move', index);
+                this.performAction('move', cardValue);
             });
 
             collectBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.performAction('collect', index);
+                this.performAction('collect', cardValue);
             });
 
             handContainer.appendChild(cardElem);
-        });
+        }
 
         // 更新提示
         const hint = document.getElementById('hand-hint');
-        if (canComboIndices.length > 0) {
-            hint.textContent = `可以使用 ${canComboIndices.map(i => state.hand[i]).join(', ')} 点牌进行连击！`;
+        if (canComboValues.length > 0) {
+            hint.textContent = `可以使用 ${canComboValues.join(', ')} 点牌进行连击！`;
         } else if (state.collectable) {
             hint.textContent = '可以进行收集或继续移动';
         } else {
@@ -398,9 +400,10 @@ class GameClient {
         const confidencePercent = (confidence * 100).toFixed(1);
 
         // 找出概率最高的前3个动作进行对比
+        // 动作空间：[move_1, move_2, move_3, collect_1, collect_2, collect_3]
         const actionNames = [
-            'M0', 'M1', 'M2', 'M3', 'M4',
-            'C0', 'C1', 'C2', 'C3', 'C4'
+            'M1', 'M2', 'M3',
+            'C1', 'C2', 'C3'
         ];
         const sortedActions = probabilities
             .map((prob, idx) => ({ action: idx, prob: prob, name: actionNames[idx] }))
@@ -411,9 +414,9 @@ class GameClient {
         let suggestionText = '';
 
         if (actionInfo.type === 'move') {
-            suggestionText = `AI建议移动：使用序号 ${actionInfo.card_index} 的牌（${actionInfo.card_value} 点）`;
+            suggestionText = `AI建议移动：使用 ${actionInfo.card_value} 点牌`;
         } else {
-            suggestionText = `AI建议收集：使用序号 ${actionInfo.card_index} 的牌（${actionInfo.card_value} 点）`;
+            suggestionText = `AI建议收集：使用 ${actionInfo.card_value} 点牌`;
             if (actionInfo.is_combo) {
                 suggestionText += ' [连击]';
             }

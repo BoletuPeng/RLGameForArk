@@ -66,7 +66,7 @@ class ResourceGame:
         self.rng = np.random.RandomState(seed)
 
         # 回合内状态
-        self.hand: List[int] = []     # 手牌
+        self.hand: Dict[int, int] = {1: 0, 2: 0, 3: 0}  # 手牌统计：点数 -> 数量
         self.collectable = False      # 是否处于"可普通收集"状态（刚移动过）
         self.last_collect_cost = None # 上一次收集所用卡牌点数 n
         self.last_action_was_move = False
@@ -115,8 +115,11 @@ class ResourceGame:
         return Customer(is_vip=False, needs=needs, reward=1)
 
     def deal_hand(self):
-        """发 5 张 1~3 点的随机手牌"""
-        self.hand = self.rng.randint(1, 4, size=5).tolist()
+        """发 5 张 1~3 点的随机手牌，并统计每个点数的数量"""
+        cards = self.rng.randint(1, 4, size=5)
+        self.hand = {1: 0, 2: 0, 3: 0}
+        for card in cards:
+            self.hand[card] += 1
 
     def tile_type(self) -> str:
         """当前位置的资源类型"""
@@ -128,39 +131,46 @@ class ResourceGame:
 
     def can_move(self) -> bool:
         """是否可以移动（有手牌）"""
-        return len(self.hand) > 0
+        return any(count > 0 for count in self.hand.values())
 
-    def can_collect(self, card_index: int) -> bool:
-        """是否可以使用指定手牌进行收集"""
-        if card_index < 0 or card_index >= len(self.hand):
+    def can_collect(self, card_value: int) -> bool:
+        """是否可以使用指定点数的卡牌进行收集"""
+        if card_value not in [1, 2, 3] or self.hand.get(card_value, 0) == 0:
             return False
 
         # 检查是否可以连击
-        combo_indices = self.can_combo_indices()
-        if card_index in combo_indices:
+        combo_values = self.can_combo_values()
+        if card_value in combo_values:
             return True
 
         # 检查是否可以普通收集
         return self.collectable
 
-    def can_combo_indices(self) -> List[int]:
-        """当前可用于连击的手牌索引列表"""
+    def can_combo_values(self) -> List[int]:
+        """当前可用于连击的卡牌点数列表"""
         if self.last_collect_cost is None or self.last_action_was_move:
             return []
         target = self.last_collect_cost + 1
-        return [i for i, v in enumerate(self.hand) if v == target]
+        if target in [1, 2, 3] and self.hand.get(target, 0) > 0:
+            return [target]
+        return []
 
-    def move(self, card_index: int) -> Tuple[bool, str]:
+    def move(self, card_value: int) -> Tuple[bool, str]:
         """
-        使用一张牌进行移动
+        使用指定点数的卡牌进行移动
         返回：(成功, 消息)
         """
-        if card_index < 0 or card_index >= len(self.hand):
-            return False, "卡牌索引无效"
+        if card_value not in [1, 2, 3]:
+            return False, "卡牌点数无效"
 
-        value = self.hand.pop(card_index)
+        if self.hand.get(card_value, 0) == 0:
+            return False, f"没有 {card_value} 点的卡牌"
+
+        # 使用一张该点数的卡
+        self.hand[card_value] -= 1
+
         old_pos = self.position
-        steps = value
+        steps = card_value
 
         # 判断是否绕过起点（0 号格）
         crossed_start = False
@@ -174,13 +184,13 @@ class ResourceGame:
         self.last_action_was_move = True
         self.total_moves += 1
 
-        msg = f"使用 {value} 点卡牌前进 {steps} 步，到达 [{self.position}] {self.tile_type()}"
+        msg = f"使用 {card_value} 点卡牌前进 {steps} 步，到达 [{self.position}] {self.tile_type()}"
         if crossed_start:
             msg += f"。绕过起点，资源系数 +2，当前：{self.resource_coef}"
 
         self.action_history.append({
             'type': 'move',
-            'card_value': value,
+            'card_value': card_value,
             'old_position': old_pos,
             'new_position': self.position,
             'crossed_start': crossed_start
@@ -188,39 +198,43 @@ class ResourceGame:
 
         return True, msg
 
-    def collect(self, card_index: int) -> Tuple[bool, str, int, List[Tuple[bool, int]]]:
+    def collect(self, card_value: int) -> Tuple[bool, str, int, List[Tuple[bool, int]]]:
         """
-        使用一张牌进行收集
+        使用指定点数的卡牌进行收集
         返回：(成功, 消息, 获得的代币数, 每个顾客的(是否VIP, 获得的有效资源量)列表)
         """
-        if card_index < 0 or card_index >= len(self.hand):
-            return False, "卡牌索引无效", 0, []
+        if card_value not in [1, 2, 3]:
+            return False, "卡牌点数无效", 0, []
+
+        if self.hand.get(card_value, 0) == 0:
+            return False, f"没有 {card_value} 点的卡牌", 0, []
 
         # 检查是否可以收集
-        combo_indices = self.can_combo_indices()
-        is_combo = card_index in combo_indices
+        combo_values = self.can_combo_values()
+        is_combo = card_value in combo_values
 
         if not is_combo and not self.collectable:
             return False, "当前不能进行普通收集", 0, []
 
-        value = self.hand.pop(card_index)
+        # 使用一张该点数的卡
+        self.hand[card_value] -= 1
         tile = self.tile_type()
 
         # 本次产出的资源
         produced = {r: 0 for r in RESOURCE_TYPES}
-        gain_tile = self.resource_coef * value
+        gain_tile = self.resource_coef * card_value
         produced[tile] += gain_tile
 
         msg_parts = []
         if not is_combo:
-            msg_parts.append(f"普通收集：在 {tile} 上使用 {value} 点卡牌，产出 {gain_tile} 个{tile}")
+            msg_parts.append(f"普通收集：在 {tile} 上使用 {card_value} 点卡牌，产出 {gain_tile} 个{tile}")
         else:
             # 连击：额外 +2 冰/+2 铁/+2 火
             for r in RESOURCE_TYPES:
                 produced[r] += 2
-            msg_parts.append(f"连击收集：在 {tile} 上使用 {value} 点卡牌，产出 {gain_tile} 个{tile}，额外 +2 全资源")
+            msg_parts.append(f"连击收集：在 {tile} 上使用 {card_value} 点卡牌，产出 {gain_tile} 个{tile}，额外 +2 全资源")
 
-        self.last_collect_cost = value
+        self.last_collect_cost = card_value
         self.collectable = False
         self.last_action_was_move = False
         self.total_collections += 1
@@ -233,7 +247,7 @@ class ResourceGame:
 
         self.action_history.append({
             'type': 'collect',
-            'card_value': value,
+            'card_value': card_value,
             'position': self.position,
             'is_combo': is_combo,
             'produced': produced.copy(),
@@ -306,7 +320,7 @@ class ResourceGame:
 
     def is_round_over(self) -> bool:
         """当前回合是否结束（无牌可出）"""
-        return len(self.hand) == 0
+        return all(count == 0 for count in self.hand.values())
 
     def is_game_over(self) -> bool:
         """游戏是否结束"""
@@ -325,7 +339,7 @@ class ResourceGame:
             'hand': self.hand.copy(),
             'collectable': self.collectable,
             'last_collect_cost': self.last_collect_cost,
-            'can_combo_indices': self.can_combo_indices(),
+            'can_combo_values': self.can_combo_values(),
             'customers': [c.to_dict() for c in self.customers],
             'tokens': self.tokens,
             'is_round_over': self.is_round_over(),
@@ -342,26 +356,27 @@ class ResourceGame:
         获取观测向量（用于强化学习）
 
         观测维度：
-        - 手牌（5维，每个0-3）
+        - 手牌统计（3维）：1点、2点、3点各有几张（0-5）
         - 位置（10维，one-hot）
         - 资源系数（1维）
         - 当前回合（1维）
         - 是否可收集（1维）
         - 上次收集代价（1维，0-3）
         - 顾客需求和进度（每个顾客6维 x 3 = 18维）
-          - 需求资源1类型（3维one-hot）
-          - 需求资源1数量（1维，归一化）
-          - 需求资源1进度（1维，归一化）
+          - 需求资源1类型（归一化）
+          - 需求资源1数量（归一化）
+          - 需求资源1进度（归一化）
           - （如果有第二种资源，类似）
         - 代币数（1维）
 
-        总维度：5 + 10 + 1 + 1 + 1 + 1 + 18 + 1 = 38
+        总维度：3 + 10 + 1 + 1 + 1 + 1 + 18 + 1 = 36
         """
         obs = []
 
-        # 手牌（5维）
-        hand_padded = self.hand + [0] * (5 - len(self.hand))
-        obs.extend(hand_padded[:5])
+        # 手牌统计（3维）：归一化到0-1之间，最大5张
+        obs.append(self.hand.get(1, 0) / 5.0)
+        obs.append(self.hand.get(2, 0) / 5.0)
+        obs.append(self.hand.get(3, 0) / 5.0)
 
         # 位置（10维one-hot）
         pos_onehot = [0] * 10
@@ -413,20 +428,20 @@ class ResourceGame:
     def get_valid_actions(self) -> np.ndarray:
         """
         获取有效动作掩码（用于强化学习）
-        动作空间：[move_0, move_1, move_2, move_3, move_4,
-                  collect_0, collect_1, collect_2, collect_3, collect_4]
-        返回：10维的0/1数组，1表示该动作有效
+        动作空间：[move_1, move_2, move_3, collect_1, collect_2, collect_3]
+        返回：6维的0/1数组，1表示该动作有效
         """
-        valid = np.zeros(10, dtype=np.float32)
+        valid = np.zeros(6, dtype=np.float32)
 
-        # 移动动作：只要有对应手牌就有效
-        for i in range(min(5, len(self.hand))):
-            valid[i] = 1
+        # 移动动作（0-2）：只要有对应点数的牌就有效
+        for card_value in [1, 2, 3]:
+            if self.hand.get(card_value, 0) > 0:
+                valid[card_value - 1] = 1
 
-        # 收集动作：需要检查是否可收集
-        for i in range(min(5, len(self.hand))):
-            if self.can_collect(i):
-                valid[5 + i] = 1
+        # 收集动作（3-5）：需要检查是否可收集
+        for card_value in [1, 2, 3]:
+            if self.can_collect(card_value):
+                valid[3 + card_value - 1] = 1
 
         return valid
 
@@ -439,7 +454,7 @@ class ResourceGame:
         self.position = 0
         self.resource_coef = 3
         self.current_round = 0
-        self.hand = []
+        self.hand = {1: 0, 2: 0, 3: 0}
         self.collectable = False
         self.last_collect_cost = None
         self.last_action_was_move = False
