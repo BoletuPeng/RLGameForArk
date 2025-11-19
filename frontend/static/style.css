@@ -111,6 +111,19 @@ body {
     background: #dd6b20;
 }
 
+.btn-endgame {
+    background: #9f7aea;
+    color: white;
+}
+
+.btn-endgame:hover {
+    background: #805ad5;
+}
+
+.btn-endgame.active {
+    background: #d53f8c;
+}
+
 .btn-large {
     padding: 15px 40px;
     font-size: 18px;
@@ -753,4 +766,108 @@ body {
 .no-models-icon {
     font-size: 48px;
     margin-bottom: 10px;
+}
+
+/* 残局模式样式 */
+.endgame-mode .map-tile {
+    cursor: pointer;
+    position: relative;
+}
+
+.endgame-mode .map-tile:hover::after {
+    content: '点击前进';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    white-space: nowrap;
+    z-index: 100;
+}
+
+.endgame-mode .info-card h2,
+.endgame-mode .hand-container h2,
+.endgame-mode .customer {
+    cursor: pointer;
+    position: relative;
+}
+
+.endgame-mode .info-card h2:hover::after,
+.endgame-mode .hand-container h2:hover::after,
+.endgame-mode .customer:hover::after {
+    content: '点击编辑';
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(159, 122, 234, 0.9);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+}
+
+/* 编辑表单样式 */
+.edit-form {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f7fafc;
+    border-radius: 8px;
+    border: 2px solid #9f7aea;
+}
+
+.edit-form-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: center;
+}
+
+.edit-form-label {
+    min-width: 100px;
+    font-weight: 600;
+    color: #666;
+}
+
+.edit-form-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 2px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.3s ease;
+}
+
+.edit-form-input:focus {
+    outline: none;
+    border-color: #9f7aea;
+}
+
+.edit-form-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.edit-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.edit-form-grid-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.edit-form-grid-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
 }
